@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+/**
+ * 工具循环端到端测试：本地假 OpenAI 服务驱动 runAssistant——
+ * 录题 → 画图（含 presentationMeta 投影与演示入库）→ 收尾文本，全程真 store 落库。
+ * node 24 自带 fetch；localStorage 打内存桩。
+ */
+import http from 'node:http'
+
+const mem = new Map()
+globalThis.localStorage = {
+  getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+  setItem: (k, v) => mem.set(k, String(v)),
+  removeItem: (k) => mem.delete(k),
+}
+
+const { store } = await import('../src/state.js')
+const llm = await import('../src/ai/llm.js')
+const { EXAMPLES } = await import('../src/core/examples.js')
+
+let passed = 0
+const failures = []
+function ok(label, cond, extra) {
+  if (cond) { passed += 1; console.log('  ✓ ' + label) }
+  else { failures.push(label); console.error('  ✗ ' + label + (extra ? ' → ' + extra : '')) }
+}
+
+await store.load()
+
+// 剧本：工具调用两轮后给最终文本
+const scenarios = [
+  { tool: { name: 'tutor_add_items', args: { items: [{ subject: 'math', kind: 'mistake', topic: '一元函数的导数及其应用', question: '求 x³−3x 极小值', answer: 'f(1)=−2', explanation: '先求导找驻点' }] } } },
+  { tool: { name: 'tutor_visualize', args: { scene: EXAMPLES.plot2d, item: { subject: 'math', kind: 'mistake', topic: '一元函数的导数及其应用', question: '结合图象讲极小值', answer: 'f(1)=−2' } } } },
+  { text: '图与题都进库了，去复习页抽查我。' },
+]
+const requests = []
+let step = 0
+const server = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    requests.push(parsed)
+    const sc = scenarios[step]
+    const message = sc.text !== undefined
+      ? { role: 'assistant', content: sc.text }
+      : { role: 'assistant', content: null, tool_calls: [{ id: 'call_' + step, type: 'function', function: { name: sc.tool.name, arguments: JSON.stringify(sc.tool.args) } }] }
+    step += 1
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message }] }))
+  })
+})
+await new Promise((r) => server.listen(0, '127.0.0.1', r))
+const port = server.address().port
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + port + '/v1', model: 'stub-model', apiKey: 'test' })
+
+const apiMsgs = [{ role: 'user', content: '讲一下 x³−3x 的极小值，配个图' }]
+const events = []
+const final = await llm.runAssistant(apiMsgs, (ev) => events.push(ev))
+
+ok('最终文本透传', final === '图与题都进库了，去复习页抽查我。', final)
+ok('事件流 4 条（两工具 run+done）', events.length === 4 && events[1].phase === 'done' && events[3].phase === 'done')
+ok('工具摘要中文化', events[0].label.includes('录入题库') && events[2].label.includes('动态演示'))
+ok('第二轮请求携带 tool 角色回灌', requests[1].messages.some((m) => m.role === 'tool'))
+ok('携带 OpenAI tools schema', Array.isArray(requests[0].tools) && requests[0].tools.length === 14 && requests[0].tools[0].function.name === 'tutor_dashboard')
+const demoEvent = events.find((e) => e.phase === 'done' && e.meta && e.meta.kind === 'hst-demo')
+ok('visualize 的 presentationMeta 投影完整', Boolean(demoEvent) && demoEvent.ok && demoEvent.meta.scene && Array.isArray(demoEvent.meta.keySteps), demoEvent ? String(demoEvent.error || 'meta缺') : '无demo事件')
+const items = store.db().items
+ok('模型录的题已入题库', items.some((i) => i.question.includes('x³−3x')))
+ok('visualize 附带 item 一并入库并关联', items.some((i) => i.id === demoEvent.meta.itemId))
+const demos = store.demoDb().demos
+ok('演示已存演示库（可回播）', demos.length === 1 && demos[0].itemId !== '')
+ok('system 提示词只保留一份', requests[1].messages.filter((m) => m.role === 'system').length === 1)
+
+// 错误路径：端点 404 → 可读错误
+const bad = http.createServer((req, res) => { res.writeHead(404); res.end('not found') })
+await new Promise((r) => bad.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + bad.address().port, model: 'stub', apiKey: 'x' })
+let errText = ''
+try { await llm.runAssistant([{ role: 'user', content: 'hi' }]) } catch (err) { errText = String(err.message) }
+ok('端点错误有可读提示', errText.includes('404'), errText)
+bad.close()
+server.close()
+
+console.log('')
+if (failures.length > 0) { console.error('AI 链路失败 ' + failures.length + ' 项'); process.exit(1) }
+console.log('✅ AI 工具循环端到端通过 ' + passed + ' 项')

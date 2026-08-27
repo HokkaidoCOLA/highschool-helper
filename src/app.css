@@ -142,3 +142,38 @@ textarea.input { resize: vertical; }
 .st-doing .dotStatus { background: #e08b1a; border-color: #e08b1a; }
 .st-done .dotStatus { background: #16a34a; border-color: #16a34a; }
 .st-done { color: var(--fg2); text-decoration: line-through; }
+
+/* ── 聊天页 ───────────────────────────────────────────── */
+.fullBleed { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.chatPage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chatStream { flex: 1; overflow-y: auto; padding: 10px 12px 6px; }
+.chatEmpty { color: var(--fg2); font-size: 13px; padding: 24px 8px; }
+.chatEmpty ul { padding-left: 18px; line-height: 2; }
+.msg { max-width: 86%; margin: 8px 0; border-radius: 14px; padding: 9px 12px; font-size: 14.5px; }
+.msg.user { margin-left: auto; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant { margin-right: auto; background: var(--bg2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msgBody { white-space: pre-wrap; word-break: break-word; }
+.msgImgs { display: flex; gap: 6px; margin-bottom: 6px; }
+.msgImgs img { max-width: 140px; max-height: 140px; border-radius: 8px; }
+.toolLine { font-size: 12px; color: var(--fg2); background: var(--bg2); border-radius: 8px; padding: 4px 9px; margin: 5px 0; width: fit-content; max-width: 100%; }
+.toolLine.bad { color: #dc2626; }
+.notice { font-size: 12.5px; color: var(--fg2); margin: 6px 0; }
+.typing { font-size: 12.5px; color: var(--fg2); padding: 6px 2px; }
+.demoMsg .blockBtn { width: 100%; }
+.attachRow { display: flex; gap: 6px; padding: 6px 12px 0; }
+.attachRow img { height: 54px; border-radius: 8px; border: 2px solid var(--brand); cursor: pointer; }
+.composer { flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+.composerInput { max-height: 120px; min-height: 40px; }
+.iconBtn { appearance: none; border: 1px solid var(--line); background: var(--bg2); border-radius: 10px; font-size: 17px; width: 40px; height: 40px; flex: none; cursor: pointer; }
+.iconBtn.send { background: var(--brand); color: #fff; border-color: transparent; }
+.iconBtn.stop { background: #dc2626; color: #fff; border-color: transparent; }
+.overlay.column { align-items: stretch; }
+.demoModal { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px 12px; margin: 8px; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.demoModalStage { flex: 1; min-height: 0; overflow-y: auto; }
+.inlineDeck .question { white-space: pre-wrap; margin: 6px 0 10px; }
+.inlineDeck .answer { border-left: 3px solid var(--brand); padding: 6px 10px; background: var(--bg2); border-radius: 6px; white-space: pre-wrap; }
+.blockBtn { width: 100%; }
+.fileCard .btn { margin-top: 4px; }
+.aiSetupHint .btn { margin-top: 6px; }
+.appTabs.eight { grid-template-columns: repeat(8, 1fr); }
+.appTabs.eight .appTab { font-size: 11.5px; padding: 8px 0; }

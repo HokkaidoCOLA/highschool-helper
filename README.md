@@ -5,16 +5,17 @@
 > 九种场景的 2D/3D 动态演示（分步解题时间轴）、每日目标与统计、高考倒计时、模考趋势。
 > 语 · 数 · 英 · 物 · 化 · 地。GPL-3.0-or-later。
 
-**v1 边界**：插件里由对话模型驱动的操作（讲题时录题、AI 画图、聊天抽查）改为界面手动入口与内置内容；
-**AI 讲题/出题列为二期**（预留：填自己的 OpenAI 兼容 API Key，App 侧复刻工具协议）。
-数据完全存本机（IndexedDB），不联网也不掉功能——离线是默认状态，不是降级。
+**AI 对话已内置**：聊天是主页——拍照/相册发题给视觉模型识别讲题、📎 拖入或选择
+试卷文档解析入库、模型画图直接生成可分步演示的讲题卡、说「抽查我」当场翻卡评分。
+模型凭证自备（设置 → AI 接入，OpenAI 兼容端点）；**不接模型时 App 依然是完整的**
+复习/题库/演示/资料/统计工具——离线是默认状态，不是降级。
 
 ## 快速上手
 
 ```bash
 npm install
 npm run dev       # 开发（http://localhost:5173）
-npm test          # 核心回归 23 项 + UI 冒烟 11 项
+npm test          # 核心回归 23 项 + AI 工具循环端到端 11 项 + UI 冒烟 13 项
 npm run build     # 产物在 dist/（gzip 后约 140 KB）
 npm run preview   # 本地起静态服务体验构建产物
 ```
@@ -42,6 +43,26 @@ npm run apk       # scripts/build-apk.sh：build → cap add android → assembl
 安装到手机：把 APK 传到手机点开安装（允许「安装未知来源应用」），或 USB 调试下 `adb install -r highschool-tutor-debug.apk`。
 debug 包用调试密钥签名——分发给他人的正式版需自建 release keystore 并 `assembleRelease`。
 
+## AI 接入
+
+`设置 → AI 接入` 填三项（任意 OpenAI 兼容服务）：
+
+- **baseURL**：如 `https://api.openai.com/v1`（或 DeepSeek/通义/Kimi 等兼容端点）；
+- **API Key**：只存本机 localStorage，不进备份、不外传；
+- **模型名**：需支持 function calling；**拍照讲题需视觉能力**（gpt-4o、qwen-vl、glm-4v 一类）。
+
+「测试连接」一键自检。App 端复刻了插件的 14 个工具协议（`src/core/tools.js` 由同步脚本
+从插件仓库移植），模型每调一次工具都**真实落在本机 Store**：录题排期、翻卡评分、
+可视化讲题卡——插件里工具宿主是 DSH，这里换成了 App 自己的 IndexedDB。
+
+APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；纯浏览器 PWA 模式直连
+第三方端点可能被 CORS 拦（同源部署或装 APK 是正路）。拍照在 Android 上直接拉系统相机
+（`capture="environment"`）；浏览器 PWA 走文件选择器。
+
+## 导航
+
+底部八页：**聊天**（默认）· 今日 · 复习 · 题库 · 演示 · 资料 · 统计 · 设置。
+
 ## 从 DSH 插件迁移数据
 
 设置页 →「数据与迁移」→「导入备份/插件数据」，一次选中电脑 `~/.dsh/highschool-tutor/` 里的
@@ -68,7 +89,8 @@ debug 包用调试密钥签名——分发给他人的正式版需自建 release
 ## 目录
 
 ```
-src/core/       移植自插件的核心逻辑（同步脚本管理）+ idb.js / bytes.js（应用侧基座）
+src/core/       移植自插件的核心逻辑（同步脚本管理，含 tools.js 14 个工具）+ idb.js / bytes.js
+src/ai/         llm.js —— OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止
 src/engine/     演示引擎四件套（复制）+ boot.js（共享 Player 装载、键盘守卫、主题变量）
 src/ui/         七页：今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置
 src/state.js    store 单例 + 数据变更总线
@@ -79,7 +101,7 @@ capacitor.config.json   Android 壳配置（webDir: dist）
 
 ## 已知边界
 
-- PDF / 图片导入不做（与插件同口径：转 docx 或等二期接识图）；
-- 演示库 v1 的来源 = 内置 9+7 份 + JSON 导入；AI 生成场景在二期；
+- 拍照识题依赖所选模型的视觉能力；纯文本模型下图片附件会被告知识别不了；
+- 演示库来源 = 内置 9+7 份 + JSON 导入 + **对话中模型实时生成**（tutor_visualize 落卡）；
 - iOS 未验证（PWA 本身可用；Capacitor 加 ios 平台即可）；
 - 复习翻卡的「翻面前只显题面图示」沿用引擎 q 标记，内置演示大多未打 q 标，翻面前会显示完整基础图——二期接 AI 时会补标注。

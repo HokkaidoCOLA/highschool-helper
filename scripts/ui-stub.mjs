@@ -30,3 +30,9 @@ globalThis.removeEventListener = () => {}
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {} }),
 globalThis.requestAnimationFrame = (fn) => 0
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' })
+const _mem = new Map()
+globalThis.localStorage = {
+  getItem: (k) => (_mem.has(k) ? _mem.get(k) : null),
+  setItem: (k, v) => _mem.set(k, String(v)),
+  removeItem: (k) => _mem.delete(k),
+}

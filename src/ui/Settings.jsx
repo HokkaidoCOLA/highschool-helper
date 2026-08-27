@@ -10,8 +10,54 @@ import { SUBJECTS, subjectLabel } from '../core/subjects.js'
 import { syllabusFor } from '../core/syllabus.js'
 import { dataDir } from '../core/store.js'
 import { useTick, downloadText } from './shared.jsx'
+import { loadAiConfig, saveAiConfig, testConnection, DEFAULT_SYSTEM } from '../ai/llm.js'
 
 const FILENAMES = ['profile.json', 'items.json', 'reviews.json', 'studylog.json', 'exams.json', 'demos.json']
+
+function AiCard() {
+  const initial = loadAiConfig()
+  const [form, setForm] = React.useState({
+    baseUrl: initial.baseUrl || '', apiKey: initial.apiKey || '', model: initial.model || '',
+    systemPrompt: initial.systemPrompt || '', temperature: initial.temperature === undefined ? '' : String(initial.temperature),
+  })
+  const [testing, setTesting] = React.useState(false)
+  const [result, setResult] = React.useState('')
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const save = () => {
+    const cfg = { baseUrl: form.baseUrl.trim(), model: form.model.trim() }
+    if (form.apiKey.trim() !== '') cfg.apiKey = form.apiKey.trim(); else if (initial.apiKey) cfg.apiKey = initial.apiKey
+    if (form.systemPrompt.trim() !== '') cfg.systemPrompt = form.systemPrompt.trim()
+    if (form.temperature.trim() !== '' && Number.isFinite(Number(form.temperature))) cfg.temperature = Number(form.temperature)
+    saveAiConfig(cfg)
+    setResult('已保存（仅存本机）')
+  }
+  const test = async () => {
+    setTesting(true); setResult('')
+    try { setResult('✔ 连通：' + (await testConnection()).slice(0, 40)) }
+    catch (err) { setResult('✗ ' + String(err && err.message ? err.message : err)) }
+    setTesting(false)
+  }
+  return (
+    <div className="card">
+      <h3>AI 接入（可选）</h3>
+      <p className="hint">填任意 OpenAI 兼容服务（baseURL 形如 https://api.openai.com/v1）。对话、拍照讲题、文件录入靠它；不接也不影响复习/题库/演示。密钥只存本机。</p>
+      <label className="field wide">baseURL<input className="input" placeholder="https://…/v1" value={form.baseUrl} onChange={set('baseUrl')} /></label>
+      <label className="field wide">API Key<input className="input" type="password" placeholder="sk-…" value={form.apiKey} onChange={set('apiKey')} /></label>
+      <div className="row">
+      <label className="field">模型名<input className="input grow" placeholder="支持工具调用；讲题识图需支持视觉" value={form.model} onChange={set('model')} /></label>
+      <label className="field">温度（可选）<input className="input num" placeholder="0.7" value={form.temperature} onChange={set('temperature')} /></label>
+      </div>
+      <label className="field wide">系统提示（可选，留空用内置教练规则）
+        <textarea className="input tall" placeholder={DEFAULT_SYSTEM.slice(0, 120) + '…'} value={form.systemPrompt} onChange={set('systemPrompt')} />
+      </label>
+      <div className="row">
+        <button type="button" className="btn primary" onClick={save}>保存</button>
+        <button type="button" className="btn" onClick={test} disabled={testing || form.baseUrl === '' || form.model === ''}>{testing ? '测试中…' : '测试连接'}</button>
+      </div>
+      {result !== '' ? <p className={result.startsWith('✔') ? 'ok' : 'warn'}>{result}</p> : null}
+    </div>
+  )
+}
 
 export default function Settings() {
   const tick = useTick()
@@ -115,6 +161,8 @@ export default function Settings() {
         </div>
         <button type="button" className="btn primary" onClick={save}>保存设置</button>
       </div>
+
+      <AiCard />
 
       <div className="card">
         <h3>教材章节进度（人教版新教材）</h3>

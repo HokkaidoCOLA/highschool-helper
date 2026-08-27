@@ -11,6 +11,7 @@ import Docs from '../src/ui/Docs.jsx'
 import Stats from '../src/ui/Stats.jsx'
 import Settings from '../src/ui/Settings.jsx'
 import App from '../src/ui/App.jsx'
+import Chat from '../src/ui/Chat.jsx'
 
 let passed = 0
 const failures = []
@@ -44,6 +45,8 @@ const checks = [
   ['设置页', <Settings />, '数据与迁移'],
   ['设置页·章节进度', <Settings />, '教材章节进度'],
   ['App 外壳', <App />, '高中助学'],
+  ['聊天页（未配置提示）', <Chat goSettings={() => {}} />, '还没有接模型'],
+  ['设置页·AI 接入卡', <Settings />, 'AI 接入'],
 ]
 for (const [label, node, needle] of checks) {
   try {

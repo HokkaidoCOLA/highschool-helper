@@ -4,7 +4,8 @@
  *
  * 纯逻辑模块（srs/subjects/syllabus/seed/importer/paper/scene/examples/showcase）与
  * canvas 演示引擎（frame/*.browser.js，本就是浏览器脚本）字节级原样复制；store/zipfs/docs
- * 含 Node 专用写法（node:fs、Buffer、zlib），用正则锚点机械改写。锚点没命中就抛错——
+ * 含 Node 专用写法（node:fs、Buffer、zlib），用正则锚点机械改写（tools.js 亦然：文件路径分支
+ * 改为引导走资料页上传）。锚点没命中就抛错——
  * 防止插件侧重构后悄悄同步出半旧代码。UI、engine/boot.js、idb/bytes 等应用侧代码不在范围。
  *
  * 用法：node scripts/sync-from-plugin.mjs [插件仓库路径]（默认 ../dsh-highschool-tutor）
@@ -124,6 +125,14 @@ dc = dc.replace(/Buffer\.alloc\(0\)/g, 'new Uint8Array(0)')
 dc = dc.replace(/@param \{Buffer\}/g, '@param {Uint8Array}')
 if (/node:|Buffer\./.test(dc)) throw new Error('docs.js 移植后仍残留 Node 写法')
 put('src/core/docs.js', dc)
+// ── tools.js：14 个模型工具（schema + 本地执行；文件系统路径分支改道资料页）────
+let tl = readFileSync(join(PLUGIN, 'lib/tools.js'), 'utf8')
+tl = port(tl, [
+  [/import \{ readFileSync \} from 'node:fs'\n/, '', 'tools 导入行'],
+  [/buf = readFileSync\(args.path\)/, "throw new Error('App 版请在「资料」页上传文件，或经 text 参数传入文本')", 'tools path 分支'],
+], 'tools.js')
+if (/node:|readFileSync\(/.test(tl)) throw new Error('tools.js 移植后仍残留 Node 写法')
+put('src/core/tools.js', tl)
 
 console.log('同步完成（' + report.length + ' 个文件）← ' + PLUGIN)
 for (const r of report) console.log('  · ' + r)
