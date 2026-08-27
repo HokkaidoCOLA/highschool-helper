@@ -1,0 +1,25 @@
+{
+  "name": "highschool-tutor-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "高中三年学习与巩固助手（Android PWA）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎由 dsh-highschool-tutor 插件机械移植（scripts/sync-from-plugin.mjs），GPL-3.0-or-later。",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sync": "node scripts/sync-from-plugin.mjs",
+    "icons": "node scripts/gen-icons.mjs",
+    "test": "node scripts/test-core.mjs",
+    "apk": "bash scripts/build-apk.sh"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
