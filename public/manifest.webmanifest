@@ -1,0 +1,17 @@
+{
+  "name": "高中助学",
+  "short_name": "助学",
+  "description": "高中三年错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计（语数英物化地）",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#2f6df6",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

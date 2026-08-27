@@ -1,0 +1,8 @@
+{
+  "appId": "dev.hst.highschooltutor",
+  "appName": "高中助学",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false },
+  "backgroundColor": "#ffffff"
+}

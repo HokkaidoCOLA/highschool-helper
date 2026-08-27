@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "sync": "node scripts/sync-from-plugin.mjs",
     "icons": "node scripts/gen-icons.mjs",
-    "test": "node scripts/test-core.mjs",
+    "test": "node scripts/test-core.mjs && node scripts/test-ui.mjs",
     "apk": "bash scripts/build-apk.sh"
   },
   "dependencies": {
