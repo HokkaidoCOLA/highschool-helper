@@ -35,6 +35,13 @@ npm run apk       # scripts/build-apk.sh：build → cap add android → assembl
 `android/app/build/outputs/apk/debug/app-debug.apk`，可直接装到手机。
 `android/` 不入库（`.gitignore`），换机器重跑一次脚本即可。
 
+实测记录（macOS arm64、无 Homebrew）：Microsoft Build of OpenJDK 17 tarball + Google commandline-tools 即可，
+全程约 4 分钟出包（`BUILD SUCCESSFUL in 3m34s`，APK 3.9 MB，v1+v2 签名校验通过）。
+工具链环境变量参考 `scripts/env.example.sh`。
+
+安装到手机：把 APK 传到手机点开安装（允许「安装未知来源应用」），或 USB 调试下 `adb install -r highschool-tutor-debug.apk`。
+debug 包用调试密钥签名——分发给他人的正式版需自建 release keystore 并 `assembleRelease`。
+
 ## 从 DSH 插件迁移数据
 
 设置页 →「数据与迁移」→「导入备份/插件数据」，一次选中电脑 `~/.dsh/highschool-tutor/` 里的

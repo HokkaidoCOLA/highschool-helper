@@ -6,3 +6,6 @@ android/
 ios/
 
 .test-ui-bundle.mjs
+
+scripts/env.sh
+*.apk
