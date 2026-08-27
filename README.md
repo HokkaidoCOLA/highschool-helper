@@ -76,5 +76,3 @@ capacitor.config.json   Android 壳配置（webDir: dist）
 - 演示库 v1 的来源 = 内置 9+7 份 + JSON 导入；AI 生成场景在二期；
 - iOS 未验证（PWA 本身可用；Capacitor 加 ios 平台即可）；
 - 复习翻卡的「翻面前只显题面图示」沿用引擎 q 标记，内置演示大多未打 q 标，翻面前会显示完整基础图——二期接 AI 时会补标注。
-```
-```
