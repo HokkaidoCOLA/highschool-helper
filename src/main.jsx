@@ -4,9 +4,13 @@ import { createRoot } from 'react-dom/client'
 import App from './ui/App.jsx'
 import './app.css'
 import { store } from './state.js'
+import { loadConversations } from './ai/session.js'
+import { watchViewport } from './ui/viewport.js'
+
+watchViewport()
 
 // 先水合数据再渲染：Store 的读取是同步接口（与插件版一致），load() 是唯一异步入口。
-store.load().then(
+Promise.all([store.load(), loadConversations()]).then(
   () => createRoot(document.getElementById('root')).render(<App />),
   (err) => {
     document.getElementById('root').textContent = '数据初始化失败：' + String(err && err.message ? err.message : err)

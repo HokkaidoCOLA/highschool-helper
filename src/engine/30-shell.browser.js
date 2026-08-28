@@ -229,7 +229,14 @@
         else if (ev.key === ' ') { self.toggle(); ev.preventDefault() }
         else if (ev.key === 'r' || ev.key === 'R') self.resetView()
       })
-      window.addEventListener('resize', function () { self.layout(); self.render() })
+      // 旋转时 WebView 先派发 resize、视口尺寸随后才稳定——当下重排一次，
+      // 再补两次延迟重排，杜绝「横屏→竖屏」后画布停在旧宽度。
+      var relayout = function () { self.layout(); self.render() }
+      window.addEventListener('resize', function () {
+        relayout()
+        setTimeout(relayout, 150)
+        setTimeout(relayout, 500)
+      })
     },
 
     /** 绑定画布交互：单指拖拽/旋转、双指捏合缩放、滚轮缩放、双击复位。 */
