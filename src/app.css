@@ -314,13 +314,15 @@ textarea.input { resize: vertical; }
   /* 复习：左演示画布（sticky），右翻卡 */
   .pageReview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 14px; align-items: start; }
   .pageReview > .deckHead { grid-column: 1 / -1; }
-  .pageReview > .demoHost:has(> #hst-root) { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 96px); overflow-y: auto; overscroll-behavior: contain; }
+  .pageReview > .reviewStageWrap { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 96px); display: flex; flex-direction: column; }
+  .pageReview .demoHost:has(> #hst-root) { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .pageReview > .reviewCard { grid-column: 2; }
   .pageReview .doneCard { grid-column: 1 / -1; }
 
   /* 演示：左画布（sticky）右样例列表 */
   .pageDemos { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 0 14px; align-items: start; }
-  .pageDemos > .demoStageCol { display: block; grid-column: 1; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 52px); overflow-y: auto; overscroll-behavior: contain; }
+  .pageDemos > .stageColWrap { display: flex; flex-direction: column; grid-column: 1; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 52px); }
+  .pageDemos .demoStageCol { display: block; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .pageDemos > .demoListCol { display: block; grid-column: 2; min-width: 0; }
   .demoGrid { grid-template-columns: 1fr 1fr; }
 
@@ -379,3 +381,12 @@ textarea.input { resize: vertical; }
 .vbarHit { position: absolute; left: -4px; right: -4px; cursor: grab; touch-action: none; }
 .vbarHit:active { cursor: grabbing; }
 .vbarHit:active + .vbarThumb, .vbarHit:active ~ .vbarThumb { background: var(--brand) }
+
+/* VBar 轨道的静态参照系：wrap 定位、内层滚动（轨道不随内容滚走） */
+.drawerWrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.drawerWrap > .drawerList { flex: 1; min-height: 0; }
+.stageColWrap { position: relative; min-width: 0; }
+.demoStageCol { min-height: 0; }
+.modalStageWrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.modalStageWrap > .demoModalStage { flex: 1; min-height: 0; }
+.reviewStageWrap { position: relative; min-width: 0; }

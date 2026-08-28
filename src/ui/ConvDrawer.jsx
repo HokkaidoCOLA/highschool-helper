@@ -35,7 +35,8 @@ export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename,
         <b>历史对话</b>
         <button type="button" className="btn sm primary" onClick={() => { onNew(); if (onClose !== undefined) onClose() }}>＋ 新对话</button>
       </div>
-      <div className="drawerList" ref={listRef}><VBar forRef={listRef} />
+      <div className="drawerWrap">
+      <div className="drawerList" ref={listRef}>
         {convs.length === 0 ? <p className="hint" style={{ padding: 12 }}>还没有对话</p> : null}
         {convs.map((c) => (
           <div
@@ -68,6 +69,8 @@ export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename,
             )}
           </div>
         ))}
+      </div>
+      <VBar forRef={listRef} />
       </div>
     </div>
   )

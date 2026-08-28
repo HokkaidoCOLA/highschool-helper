@@ -39,6 +39,7 @@ export default function Review({ subject, onChangeSubject, onExit }) {
   const againRef = React.useRef(new Set())
   const startRef = React.useRef(Date.now())
   const stageRef = React.useRef(null)
+  const stageRef2 = React.useRef(null)
 
   if (queueRef.current === null || queueRef.current.batch !== batch) {
     const q = store.queue({ subject: subject || undefined, limit })
@@ -122,7 +123,7 @@ export default function Review({ subject, onChangeSubject, onExit }) {
         </select>
         <span className="deckPos">{idx + 1}/{queue.length}</span>
       </div>
-      <div ref={stageRef} className="demoHost"><VBar forRef={stageRef} /></div>
+      <div className="reviewStageWrap" ref={stageRef2}><div ref={stageRef} className="demoHost" /><VBar forRef={stageRef2} /></div>
       <div className="card reviewCard">
         <div className="cardMeta">
           <Chip subject={item.subject} />

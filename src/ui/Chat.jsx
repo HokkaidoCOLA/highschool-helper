@@ -55,7 +55,10 @@ function DemoModal({ meta, onClose }) {
           <b className="grow">{meta.title}</b>
           <button type="button" className="btn sm" onClick={onClose}>关闭</button>
         </div>
-        <div ref={ref} className="demoModalStage"><VBar forRef={ref} /></div>
+        <div className="modalStageWrap">
+          <div ref={ref} className="demoModalStage" />
+          <VBar forRef={ref} />
+        </div>
       </div>
     </div>
   )

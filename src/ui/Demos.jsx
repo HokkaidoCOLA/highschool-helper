@@ -62,9 +62,9 @@ export default function Demos() {
 
   return (
     <div className="pageDemos">
+      <div className="stageColWrap">
       <div className="demoStageCol" ref={colRef}>
       <div ref={stageRef} className="demoHost big" />
-      <VBar forRef={colRef} />
       {current !== null ? (
         <div className="card">
           <div className="row">
@@ -80,6 +80,8 @@ export default function Demos() {
       ) : (
         <p className="hint">从下面任选一份演示，分步时间轴可点芯片、可自动播放；画布可拖拽旋转/缩放（2D 平移），r 复位、方向键切步、空格播放。</p>
       )}
+      </div>
+      <VBar forRef={colRef} />
       </div>
 
       <div className="demoListCol">
