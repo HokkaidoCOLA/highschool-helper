@@ -600,11 +600,17 @@ body::after {
    .lg-on 由引擎在确认 backdrop-filter: url() 可用后挂到 <html>；
    不支持的环境整段不生效，v2 的 blur 玻璃原样保留。
    ══════════════════════════════════════════════════════════════════════ */
-/* ① 折射：SVG 位移滤镜实时采样玻璃身后像素（滚动时边缘颜色真实弯折） */
-.lg-on .appTabs, .lg-on .composer, .lg-on .chatTop, .lg-on .hero,
-.lg-on .chatSide, .lg-on .drawer, .lg-on .modal, .lg-on .demoModal {
-  -webkit-backdrop-filter: url(#hst-liquid) saturate(1.8);
-  backdrop-filter: url(#hst-liquid) saturate(1.8);
+/* ① 折射 = 可选增强层，必须挂在独立伪元素上！
+   教训（v3-v5 真机事故根源）：backdrop-filter 是单条声明，url() 在不支持的
+   WebView 内核上会让整条声明作废——磨砂连带消失，玻璃下文字变清晰，上下层
+   像直接重叠。磨砂永远留在元素本体（v2 层的纯 CSS blur，通用支持），
+   url() 只出现在 ::before：它失效只牺牲这一层，不牵连磨砂。 */
+.lg-on .appTabs::before, .lg-on .composer::before, .lg-on .chatTop::before,
+.lg-on .hero::before, .lg-on .chatSide::before, .lg-on .drawer::before,
+.lg-on .modal::before, .lg-on .demoModal::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: 0;
+  pointer-events: none;
+  -webkit-backdrop-filter: url(#hst-liquid); backdrop-filter: url(#hst-liquid);
 }
 
 /* ② 高光：--gx/--gy 是引擎每帧写入的光源局部坐标 */
