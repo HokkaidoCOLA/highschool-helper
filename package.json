@@ -1,6 +1,6 @@
 {
   "name": "highschool-tutor-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "高中三年学习与巩固助手（Android PWA）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎由 dsh-highschool-tutor 插件机械移植（scripts/sync-from-plugin.mjs），GPL-3.0-or-later。",
