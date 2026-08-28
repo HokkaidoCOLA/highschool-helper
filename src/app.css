@@ -38,7 +38,7 @@
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.65 -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif; }
 #root { height: 100%; }
-.app { display: flex; flex-direction: column; height: var(--app-h, 100dvh); }
+.app { display: flex; flex-direction: column; height: var(--app-h, 100dvh); overflow: hidden; }
 
 /* 头部 */
 .appHeader { flex: none; display: flex; align-items: center; gap: 10px; padding: 13px 18px; background: var(--grad); color: #fff; box-shadow: 0 4px 18px rgba(91,124,250,.35); position: relative; z-index: 10; }
@@ -51,6 +51,8 @@ body { background: var(--bg); color: var(--fg); font: 15px/1.65 -apple-system, "
 .appTabs { flex: none; display: grid; grid-template-columns: repeat(8, 1fr); background: var(--card); border-top: 1px solid var(--line); box-shadow: 0 -6px 24px rgba(31,41,82,.06); padding: 5px 4px calc(5px + env(safe-area-inset-bottom)); }
 .appTab { appearance: none; border: 0; background: transparent; color: var(--fg3); font: inherit; font-size: 10.5px; padding: 5px 0 3px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; border-radius: 12px; transition: color .15s, background .15s; }
 .appTab svg { width: 21px; height: 21px; }
+/* 导航栏包装：竖屏透传（底部横条不变），横屏接管 nav 区域并做 VBar 参照系 */
+.railWrap { display: contents; }
 .appTab.on { color: var(--brand); background: var(--grad-soft); font-weight: 700; }
 
 /* 卡片与排版 */
@@ -283,15 +285,21 @@ textarea.input { resize: vertical; }
   .appHeader h1 { font-size: 15px; }
   .appSub { display: none; }
   .appMain { grid-area: main; padding: 6px 14px 14px; }
+  .railWrap { display: block; grid-area: nav; position: relative; min-height: 0; }
   .appTabs {
-    grid-area: nav; display: flex; flex-direction: column; gap: 1px;
+    height: 100%; display: flex; flex-direction: column; gap: 1px;
     border-top: 0; border-right: 1px solid var(--line);
-    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     box-shadow: none;
+    /* 独立滑动区：栏内自己滚，边界处永不把滚动传给外层 */
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* 窄栏不画原生条，溢出提示交给 VBar */
   }
-  .appTab { padding: 6px 0 4px; }
-  .appTab svg { width: 20px; height: 20px; }
-  .appTab span { font-size: 9.5px; transform: scale(.92); }
+  .appTabs::-webkit-scrollbar { width: 0; height: 0 }
+  /* 收紧：8 项在 ~410px 屏高下默认不滚就全见（设置不再被截） */
+  .appTab { padding: 4px 0 3px; }
+  .appTab svg { width: 19px; height: 19px; }
+  .appTab span { font-size: 9px; transform: scale(.88); }
 
   .card { margin: 8px 0; padding: 12px 14px; }
 
@@ -399,4 +407,3 @@ textarea.input { resize: vertical; }
 .chatStream { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .drawer { overscroll-behavior: contain; }
 .chatMain { min-width: 0; }
-

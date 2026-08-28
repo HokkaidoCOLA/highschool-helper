@@ -10,6 +10,7 @@ import Demos from './Demos.jsx'
 import Docs from './Docs.jsx'
 import Stats from './Stats.jsx'
 import Settings from './Settings.jsx'
+import VBar from './VBar.jsx'
 
 const TABS = [
   { key: 'chat', label: '聊天', C: Chat, I: IconChat },
@@ -24,6 +25,7 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = React.useState('chat')
+  const tabsRef = React.useRef(null)
   const [reviewSubject, setReviewSubject] = React.useState(undefined)
   const goReview = (subject) => { setReviewSubject(subject); setTab('review') }
   const Page = TABS.find((t) => t.key === tab).C
@@ -43,14 +45,17 @@ export default function App() {
           onExit={tab === 'review' ? () => setTab('today') : undefined}
         />
       </main>
-      <nav className="appTabs eight">
-        {TABS.map((t) => (
-          <button key={t.key} type="button" className={tab === t.key ? 'appTab on' : 'appTab'} onClick={() => setTab(t.key)}>
-            <t.I />
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </nav>
+      <div className="railWrap">
+        <nav className="appTabs eight" ref={tabsRef}>
+          {TABS.map((t) => (
+            <button key={t.key} type="button" className={tab === t.key ? 'appTab on' : 'appTab'} onClick={() => setTab(t.key)}>
+              <t.I />
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </nav>
+        <VBar forRef={tabsRef} />
+      </div>
     </div>
   )
 }
