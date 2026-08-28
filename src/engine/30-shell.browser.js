@@ -232,22 +232,51 @@
       window.addEventListener('resize', function () { self.layout(); self.render() })
     },
 
-    /** 绑定画布上的拖拽/缩放交互。 */
+    /** 绑定画布交互：单指拖拽/旋转、双指捏合缩放、滚轮缩放、双击复位。 */
     bindInteractions: function () {
       var self = this
-      var dragging = false
-      var last = null
+      /** 活跃指针表（支持多点触控）。 */
+      var pts = new Map()
+      /** 捏合起始的两指距离；非捏合态为 null。 */
+      var pinchDist = null
+      /** 最近落指的两个活跃指针的间距（三指及以上时忽略最早那只）。 */
+      var pairDist = function () {
+        var arr = []
+        pts.forEach(function (p) { arr.push(p) })
+        var a = arr[arr.length - 2]
+        var b = arr[arr.length - 1]
+        if (!a || !b) return 0
+        return Math.hypot(a.x - b.x, a.y - b.y)
+      }
+      /** 捏合展开比例 ratio>1 表示放大——与滚轮方向语义一致。 */
+      var applyZoom = function (ratio) {
+        if (!Number.isFinite(ratio) || ratio <= 0) return
+        if (self.is3d()) self.cam.zoom = NS.clamp(self.cam.zoom * ratio, 0.35, 4)
+        else self.pan.zoom = NS.clamp(self.pan.zoom / ratio, 0.25, 6)
+      }
       this.canvas.addEventListener('pointerdown', function (ev) {
-        dragging = true
-        last = { x: ev.clientX, y: ev.clientY }
+        pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+        pinchDist = pts.size === 2 ? pairDist() : null
         self.canvas.classList.add('drag')
         try { self.canvas.setPointerCapture(ev.pointerId) } catch (err) { /* 忽略 */ }
       })
       this.canvas.addEventListener('pointermove', function (ev) {
-        if (!dragging || !last) return
-        var dx = ev.clientX - last.x
-        var dy = ev.clientY - last.y
-        last = { x: ev.clientX, y: ev.clientY }
+        var prev = pts.get(ev.pointerId)
+        if (!prev) return
+        pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+        if (pts.size >= 2) {
+          // 双指：只捏合缩放，不叠加平移——手势可预期优先
+          if (pinchDist === null) { pinchDist = pairDist(); return }
+          var d = pairDist()
+          if (pinchDist > 0 && d > 0) {
+            applyZoom(d / pinchDist)
+            pinchDist = d
+            self.render()
+          }
+          return
+        }
+        var dx = ev.clientX - prev.x
+        var dy = ev.clientY - prev.y
         if (self.is3d()) {
           self.cam.yaw += dx * 0.01
           self.cam.pitch = NS.clamp(self.cam.pitch + dy * 0.01, -1.45, 1.45)
@@ -260,11 +289,11 @@
         }
         self.render()
       })
-      /** 结束拖拽。 */
-      var end = function () {
-        dragging = false
-        last = null
-        self.canvas.classList.remove('drag')
+      /** 指针抬起/取消：从活跃表移除，掉出双指即结束捏合。 */
+      var end = function (ev) {
+        pts.delete(ev.pointerId)
+        if (pts.size < 2) pinchDist = null
+        if (pts.size === 0) self.canvas.classList.remove('drag')
       }
       this.canvas.addEventListener('pointerup', end)
       this.canvas.addEventListener('pointercancel', end)
