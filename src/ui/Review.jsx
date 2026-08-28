@@ -110,7 +110,7 @@ export default function Review({ subject, onChangeSubject, onExit }) {
   }
 
   return (
-    <div>
+    <div className="pageReview">
       <div className="row deckHead">
         <select className="input" value={subject || ''} onChange={(e) => { queueRef.current = null; setBatch(0); setIdx(0); onChangeSubject(e.target.value || undefined) }}>
           <option value="">全科</option>

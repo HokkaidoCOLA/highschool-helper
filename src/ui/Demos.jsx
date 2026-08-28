@@ -59,7 +59,7 @@ export default function Demos() {
   const filtered = saved.demos.filter((d) => query === '' || (d.title + d.topic).toLowerCase().includes(query.toLowerCase()))
 
   return (
-    <div>
+    <div className="pageDemos">
       <div ref={stageRef} className="demoHost big" />
       {current !== null ? (
         <div className="card">

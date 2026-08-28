@@ -29,7 +29,7 @@ export default function Today({ goReview, goSettings }) {
   }
 
   return (
-    <div>
+    <div className="pageToday">
       <div className="card hero">
         {data.countdown.days === null ? (
           <div className="heroEmpty">还没设置高考日期
