@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * 主对话页：与学习教练对话，模型直接驱动本地题库/排期/演示（工具在端上执行）。
+ * 主对话页：视图层。全部会话状态住在 src/ai/session.js（模块单例）——
+ * 切页面不打断在途请求，回来历史/草稿/「输入中」原样恢复。
  *   · 拍照/相册：图片随消息发给视觉模型 → 识别讲题 → 录入错题本
- *   · 📎 文件：docx/pptx/txt/md/csv/html 解析 → 摘要卡 → 「确认入库」
- *   · tutor_visualize 结果 → 演示卡（点开全屏分步演示）
- *   · tutor_review_deck 结果 → 内联翻卡组（当场评分入排期）
+ *   · 📎 文件：docx/pptx/txt 等解析 → 摘要卡 → 「确认入库」
+ *   · tutor_visualize → 演示卡（点开全屏分步演示）；tutor_review_deck → 内联翻卡组
  */
 import React from 'react'
-import { store, notify } from '../state.js'
-import { runAssistant, aiReady, loadAiConfig } from '../ai/llm.js'
+import { store } from '../state.js'
+import { aiReady, loadAiConfig } from '../ai/llm.js'
+import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem } from '../ai/session.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
 import { subjectLabel } from '../core/subjects.js'
@@ -17,9 +18,6 @@ import { GradeButtons } from './shared.jsx'
 import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot } from './icons.jsx'
 
 const SUGGESTS = ['讲讲导数的几何意义，画个图', '抽查我 5 道物理', '这道题我又错了（拍照）', '帮我制定本周复习计划']
-
-let uid = 0
-const nextId = () => ++uid
 
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -30,6 +28,12 @@ function readAsDataUrl(file) {
   })
 }
 
+/** 订阅会话快照。 */
+function useSession() {
+  // 第三参 getServerSnapshot：SSR/水合用同一份模块状态（单例，两端一致）
+  return React.useSyncExternalStore(subscribeSession, getSession, getSession)
+}
+
 /** 演示卡 → 全屏模态：共享 Player 挂进来，关闭时收回暂存区。 */
 function DemoModal({ meta, onClose }) {
   const ref = React.useRef(null)
@@ -37,12 +41,17 @@ function DemoModal({ meta, onClose }) {
     if (ref.current) showScene(ref.current, meta.scene, {})
     return () => hideStage()
   }, [meta])
+  React.useEffect(() => {
+    const onKey = (ev) => { if (ev.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
   return (
     <div className="overlay column" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="demoModal">
         <div className="row">
           <b className="grow">{meta.title}</b>
-          <button type="button" className="btn sm" onClick={onClose}>关闭（Esc）</button>
+          <button type="button" className="btn sm" onClick={onClose}>关闭</button>
         </div>
         <div ref={ref} className="demoModalStage" />
       </div>
@@ -51,7 +60,7 @@ function DemoModal({ meta, onClose }) {
 }
 
 /** 对话里的翻卡组：逐张翻、四档评分直接写排期，「重来」队尾重现。 */
-function DeckInline({ cards, onDone }) {
+function DeckInline({ cards }) {
   const [queue, setQueue] = React.useState(cards)
   const [idx, setIdx] = React.useState(0)
   const [revealed, setRevealed] = React.useState(false)
@@ -60,14 +69,11 @@ function DeckInline({ cards, onDone }) {
   const grade = (g) => {
     if (!item) return
     store.review([{ id: item.id, grade: g, elapsedMs: 0 }])
-    notify()
-    setQueue((q) => {
-      const nq = q.slice()
-      if (g === 'again' && !againSeen.current.has(item.id)) { againSeen.current.add(item.id); nq.push(item) }
-      return nq
-    })
-    if (idx + 1 >= queue.length && !(g === 'again' && !againSeen.current.has(item.id))) { onDone && onDone(); return }
-    setIdx(idx + 1)
+    let nq = queue
+    if (g === 'again' && !againSeen.current.has(item.id)) { againSeen.current.add(item.id); nq = queue.concat([item]) }
+    const next = idx + 1
+    setQueue(nq)
+    setIdx(next)
     setRevealed(false)
   }
   if (!item) return <div className="notice">本组翻卡完成 ✔</div>
@@ -90,14 +96,18 @@ function DeckInline({ cards, onDone }) {
   )
 }
 
-/** 文件解析摘要卡：确认后才写入题库。 */
+/** 文件解析摘要卡：确认后才写入题库（seedKey 幂等，重复点不会录两遍）。 */
 function FileCard({ f }) {
-  const [state, setState] = React.useState(f.state || 'ready')
+  const [done, setDone] = React.useState(f.done === true)
   const confirm = () => {
-    const list = f.parsed.items.map((it) => ({ subject: it.subject, kind: it.kind, topic: it.topic, question: it.question, answer: it.answer, explanation: it.explanation, tags: it.tags, difficulty: it.difficulty, source: it.source }))
+    const list = f.parsed.items.map((it, i) => ({
+      subject: it.subject, kind: it.kind, topic: it.topic, question: it.question, answer: it.answer,
+      explanation: it.explanation, tags: it.tags, difficulty: it.difficulty, source: it.source,
+      seedKey: 'file:' + f.name + ':' + i,
+    }))
     const r = store.upsertItems(list)
-    notify()
-    setState('done:' + r.added.length)
+    setDone(true)
+    pushItem({ kind: 'notice', text: f.name + ' 已入库 ' + (r.added.length + r.updated.length) + ' 条，进入复习排期' })
   }
   const low = f.parsed.confidence === 'low'
   return (
@@ -108,95 +118,54 @@ function FileCard({ f }) {
         : '课件转出 ' + f.parsed.stats.cards + ' 张知识卡'}</p>
       {low ? <p className="warn">⚠ 不太像试卷：{(f.parsed.confidenceReasons || []).join('；')}</p> : null}
       <p className="hint">{(f.parsed.items[0] ? String(f.parsed.items[0].question).slice(0, 60) : '')}…</p>
-      {state === 'ready'
+      {!done
         ? <button type="button" className="btn primary" onClick={confirm} disabled={low}>确认入库（{f.parsed.items.length} 条）</button>
-        : state.startsWith('done:')
-          ? <span className="ok">已入库 {state.slice(5)} 条 ✔</span>
-          : null}
-      {low && state === 'ready' ? <p className="hint">低可信度内容请去「资料」页逐条核对后强制导入。</p> : null}
+        : <span className="ok">已入库 ✔</span>}
+      {low && !done ? <p className="hint">低可信度内容请去「资料」页逐条核对后强制导入。</p> : null}
     </div>
   )
 }
 
 export default function Chat({ goSettings }) {
-  const [items, setItems] = React.useState([])
-  const [input, setInput] = React.useState('')
-  const [images, setImages] = React.useState([])
-  const [busy, setBusy] = React.useState(false)
+  const s = useSession()
   const [modal, setModal] = React.useState(null)
-  const apiRef = React.useRef([])
-  const abortRef = React.useRef(null)
   const bottomRef = React.useRef(null)
   const camRef = React.useRef(null)
   const galleryRef = React.useRef(null)
   const fileRef = React.useRef(null)
   const cfg = loadAiConfig()
 
-  React.useEffect(() => { bottomRef.current && bottomRef.current.scrollIntoView({ behavior: 'smooth' }) }, [items, busy])
-  React.useEffect(() => () => { if (abortRef.current) abortRef.current.abort() }, [])
-
-  const push = (it) => setItems((v) => v.concat([{ id: nextId(), ...it }]))
+  React.useEffect(() => { bottomRef.current && bottomRef.current.scrollIntoView({ behavior: 'smooth' }) }, [s.items.length, s.busy])
 
   const pickImages = async (files) => {
     for (const file of [...(files || [])]) {
       if (!/^image\//.test(file.type || '')) continue
-      if (images.length >= 4) break
-      const url = await readAsDataUrl(file)
-      setImages((v) => v.concat([url]))
+      addDraftImage(await readAsDataUrl(file))
     }
   }
 
   const pickFile = async (files) => {
     const file = files && files[0]
     if (!file) return
-    push({ kind: 'notice', text: '正在解析 ' + file.name + ' …' })
+    pushItem({ kind: 'notice', text: '正在解析 ' + file.name + ' …' })
     try {
       const buf = new Uint8Array(await file.arrayBuffer())
       const extracted = extractText(buf, file.name)
-      if (!extracted.ok) { push({ kind: 'error', text: extracted.label + ' 不能直接解析：' + (extracted.hint || '') }); return }
+      if (!extracted.ok) { pushItem({ kind: 'error', text: extracted.label + ' 不能直接解析：' + (extracted.hint || '') }); return }
       const parsed = parseStudyText(extracted.text, { source: file.name.replace(/\.[a-z0-9]+$/i, '') })
-      if (!parsed.items || parsed.items.length === 0) { push({ kind: 'error', text: '没解析出题目。若是知识点整理，可粘贴文本让我录入。' }); return }
-      push({ kind: 'file', name: file.name, label: extracted.label, parsed })
+      if (!parsed.items || parsed.items.length === 0) { pushItem({ kind: 'error', text: '没解析出题目。若是知识点整理，可粘贴文本让我录入。' }); return }
+      pushItem({ kind: 'file', name: file.name, label: extracted.label, parsed })
     } catch (err) {
-      push({ kind: 'error', text: '解析失败：' + String(err && err.message ? err.message : err) })
+      pushItem({ kind: 'error', text: '解析失败：' + String(err && err.message ? err.message : err) })
     }
   }
 
-  const send = async () => {
-    const text = input.trim()
-    if (busy || (text === '' && images.length === 0)) return
-    setInput('')
-    const imgs = images
-    setImages([])
-    push({ kind: 'user', text, images: imgs })
-    apiRef.current.push({
-      role: 'user',
-      content: imgs.length > 0
-        ? [{ type: 'text', text: text || '请识别这张图片里的题目并讲解。' }].concat(imgs.map((url) => ({ type: 'image_url', image_url: { url } })))
-        : text,
-    })
-    setBusy(true)
-    abortRef.current = new AbortController()
-    try {
-      const final = await runAssistant(apiRef.current, (ev) => {
-        if (ev.phase === 'done') {
-          if (ev.meta && ev.meta.kind === 'hst-demo' && ev.ok) push({ kind: 'demo', meta: ev.meta })
-          else if (ev.meta && ev.meta.kind === 'hst-deck' && ev.ok) push({ kind: 'deck', cards: ev.meta.items || [] })
-          else push({ kind: 'tool', label: ev.label, ok: ev.ok, error: ev.error })
-        }
-      }, abortRef.current.signal)
-      if (final) push({ kind: 'assistant', text: final })
-      notify()
-    } catch (err) {
-      push({ kind: 'error', text: String(err && err.message ? err.message : err) })
-      // 出错时回滚本轮未完成的 user 消息不必要——保留在上下文里更利继续对话
-    } finally {
-      setBusy(false)
-      abortRef.current = null
-    }
+  const send = () => {
+    const text = s.draftText.trim()
+    if (s.busy || (text === '' && s.draftImages.length === 0)) return
+    sendUser(text, s.draftImages)
   }
 
-  const stop = () => { if (abortRef.current) abortRef.current.abort() }
   const keyDown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !/iPhone|Android/i.test(navigator.userAgent)) { ev.preventDefault(); send() } }
 
   return (
@@ -208,20 +177,26 @@ export default function Chat({ goSettings }) {
           <button type="button" className="btn primary" onClick={goSettings}>去设置</button>
         </div>
       ) : null}
+      {s.items.length > 0 ? (
+        <div className="chatBar">
+          <span className="hint grow">{s.busy ? '回复在后台继续，切页不打断' : '共 ' + s.items.filter((i) => i.kind === 'user' || i.kind === 'assistant').length + ' 条对话'}</span>
+          <button type="button" className="btn sm" onClick={clearSession}>新会话</button>
+        </div>
+      ) : null}
       <div className="chatStream">
-        {items.length === 0 ? (
+        {s.items.length === 0 ? (
           <div className="chatEmpty">
             <div className="emptyIcon"><IconRobot size={40} /></div>
             <h2>你的专属学习教练</h2>
             <p>讲题、画图、拍照录错题、丢试卷进来批量入库</p>
             <div className="suggestRow">
-              {SUGGESTS.map((s) => (
-                <button key={s} type="button" className="suggest" onClick={() => setInput(s)}>{s}</button>
+              {SUGGESTS.map((t) => (
+                <button key={t} type="button" className="suggest" onClick={() => setDraftText(t)}>{t}</button>
               ))}
             </div>
           </div>
         ) : null}
-        {items.map((it) => {
+        {s.items.map((it) => {
           if (it.kind === 'user') return (
             <div className="msg user" key={it.id}>
               {it.images && it.images.length > 0 ? <div className="msgImgs">{it.images.map((u, i) => <img key={i} src={u} alt="" />)}</div> : null}
@@ -239,7 +214,7 @@ export default function Chat({ goSettings }) {
                 <b className="grow">{it.meta.title}</b>
               </div>
               <p className="hint">{it.meta.summary}</p>
-              {(it.meta.keySteps || []).length > 0 ? <p className="hint">★ {(it.meta.keySteps || []).map((s) => s.title).join('；')}</p> : null}
+              {(it.meta.keySteps || []).length > 0 ? <p className="hint">★ {(it.meta.keySteps || []).map((k) => k.title).join('；')}</p> : null}
               <button type="button" className="btn primary" onClick={() => setModal(it.meta)}>展开分步演示</button>
             </div>
           )
@@ -247,10 +222,10 @@ export default function Chat({ goSettings }) {
           if (it.kind === 'file') return <FileCard key={it.id} f={it} />
           return null
         })}
-        {busy ? <div className="typing">教练输入中…（可随时停止）</div> : null}
+        {s.busy ? <div className="typing">教练输入中…（可随时停止）</div> : null}
         <div ref={bottomRef} />
       </div>
-      {images.length > 0 ? <div className="attachRow">{images.map((u, i) => <img key={i} src={u} alt="" onClick={() => setImages((v) => v.filter((_, j) => j !== i))} />)}</div> : null}
+      {s.draftImages.length > 0 ? <div className="attachRow">{s.draftImages.map((u, i) => <img key={i} src={u} alt="" onClick={() => removeDraftImage(i)} />)}</div> : null}
       <div className="composer">
         <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { pickImages(e.target.files); e.target.value = '' }} />
         <input ref={galleryRef} type="file" accept="image/*" multiple hidden onChange={(e) => { pickImages(e.target.files); e.target.value = '' }} />
@@ -262,12 +237,12 @@ export default function Chat({ goSettings }) {
           className="input grow composerInput"
           rows={1}
           placeholder={cfg.model ? '问点什么，或拍照/丢文件…' : '先接模型（设置→AI 接入）…'}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={s.draftText}
+          onChange={(e) => setDraftText(e.target.value)}
           onKeyDown={keyDown}
         />
-        {busy
-          ? <button type="button" className="iconBtn stop" onClick={stop} title="停止"><IconStop /></button>
+        {s.busy
+          ? <button type="button" className="iconBtn stop" onClick={stopUser} title="停止"><IconStop /></button>
           : <button type="button" className="iconBtn send" onClick={send} title="发送"><IconSend /></button>}
       </div>
       {modal !== null ? <DemoModal meta={modal} onClose={() => setModal(null)} /> : null}

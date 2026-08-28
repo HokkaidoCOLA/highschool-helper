@@ -78,6 +78,36 @@ llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + bad.address().port, model: 'st
 let errText = ''
 try { await llm.runAssistant([{ role: 'user', content: 'hi' }]) } catch (err) { errText = String(err.message) }
 ok('端点错误有可读提示', errText.includes('404'), errText)
+
+// ── 会话层：一轮对话不依赖任何 UI 也能完整跑完（= 切页不打断的本质）──
+const session = await import('../src/ai/session.js')
+const srv2 = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    const hasTool = parsed.messages.some((m) => m.role === 'tool')
+    const message = hasTool
+      ? { role: 'assistant', content: '已录入并排期。' }
+      : { role: 'assistant', content: null, tool_calls: [{ id: 's1', type: 'function', function: { name: 'tutor_add_items', arguments: JSON.stringify({ items: [{ subject: 'physics', kind: 'mistake', topic: '抛体运动', question: '会话层测试题', answer: 'B' }] }) } }] }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message }] }))
+  })
+})
+await new Promise((r) => srv2.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srv2.address().port + '/v1', model: 'stub', apiKey: 'x' })
+session.setDraftText('草稿在发送后应清空')
+const inflight = session.sendUser('帮我把这道物理错题记一下', [])
+ok('发送即 busy（此刻切页也不会中断）', session.getSession().busy === true)
+ok('发送即清空草稿', session.getSession().draftText === '')
+await inflight
+const sitems = session.getSession().items
+ok('消息流含 user/工具/assistant 三类', sitems.some((i) => i.kind === 'user') && sitems.some((i) => i.kind === 'tool') && sitems.some((i) => i.kind === 'assistant' && i.text === '已录入并排期。'))
+ok('完成后回到空闲', session.getSession().busy === false)
+ok('工具真实落库（会话层贯通 store）', store.db().items.some((i) => i.question === '会话层测试题'))
+session.clearSession()
+ok('新会话清空消息流', session.getSession().items.length === 0)
+srv2.close()
 bad.close()
 server.close()
 
