@@ -17,9 +17,9 @@ const TARGETS = ['.appTabs', '.composer', '.chatTop', '.hero', '.chatSide', '.dr
 
 /* 对齐 BiliPai BALANCED 档的调参 */
 const TUNE = {
-  blurStd: 5,        // ≈ 其 backdropBlurRadius 4dp
-  dispScale: 26,     // ≈ 其 refractionAmount 24（RG 通道）
-  band: 0.16,        // ≈ 其 refractionHeight：边缘带宽度（归一化）
+  blurStd: 4,        // ≈ 其 backdropBlurRadius 4dp
+  dispScale: 30,     // ≈ 其 refractionAmount 24（RG 通道）
+  band: 0.20,        // ≈ 其 refractionHeight：边缘带宽度（归一化）
   corner: 0.16,      // 法线贴图圆角比例
   depth: 0.35,       // depthEffect 中心凸起强度
   wobbleMax: 16,     // 滚动联动：scale 额外上限

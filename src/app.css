@@ -631,3 +631,54 @@ body::after {
 .lg-on .appTabs, .lg-on .composer, .lg-on .modal, .lg-on .demoModal {
   border-color: rgba(255,255,255,.9);
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIQUID GLASS v5：悬浮结构 + 更透材质
+   ① 玻璃底下必须有锐利内容才看得出折射（BiliPai 的 Dock 浮在视频流上，
+     我们的内容原先"让开"导航栏——玻璃下只有柔光斑，折了也白折）。
+     现在 Dock/输入条悬浮在内容之上，列表与消息从玻璃底下穿过。
+   ② 白纱减重：材质 alpha 再降一档，模糊从 5 收到 4。
+   整段以 .lg-on 为开关：不支持 url() 滤镜的环境保持旧布局，零风险。
+   ══════════════════════════════════════════════════════════════════════ */
+.lg-on { --glass-bg: linear-gradient(150deg, rgba(255,255,255,.34), rgba(255,255,255,.16));
+         --glass-bg-strong: linear-gradient(150deg, rgba(255,255,255,.50), rgba(255,255,255,.30)); }
+@media (prefers-color-scheme: dark) {
+  .lg-on { --glass-bg: linear-gradient(150deg, rgba(88,96,120,.34), rgba(46,51,66,.26));
+           --glass-bg-strong: linear-gradient(150deg, rgba(92,100,126,.55), rgba(48,53,68,.44)); }
+}
+
+/* ── 竖屏：底部 Dock 悬浮，页面内容延伸到底、从 Dock 底下穿过 ── */
+.lg-on .app { position: relative; }
+.lg-on .appTabs {
+  position: absolute; left: 12px; right: 12px; margin: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 30;
+}
+.lg-on .appMain { padding-bottom: 100px; }
+.lg-on .appMain.fullBleed { padding-bottom: 0; }
+
+/* ── 聊天：输入条悬浮（竖屏悬在 Dock 上方，横屏贴底），消息从底下穿过 ── */
+.lg-on .chatMain { position: relative; }
+.lg-on .composer {
+  position: absolute; left: 10px; right: 10px; margin: 0; z-index: 15;
+  bottom: calc(98px + env(safe-area-inset-bottom));
+}
+.lg-on .attachRow {
+  position: absolute; left: 13px; right: 13px; padding: 0; z-index: 15;
+  bottom: calc(162px + env(safe-area-inset-bottom));
+}
+.lg-on .chatStream { padding-bottom: 240px; }
+
+/* ── 横屏：左侧导航柱悬浮，主区铺满、从导航柱底下穿过；输入条贴底 ── */
+@media (orientation: landscape) and (max-height: 560px) {
+  .lg-on .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'header' 'main';
+  }
+  .lg-on .railWrap { position: absolute; left: 0; top: 0; bottom: 0; width: 74px; z-index: 30; }
+  .lg-on .appHeader { padding-left: 96px; }
+  .lg-on .appMain { padding-left: 90px; padding-bottom: 12px; }
+  .lg-on .appMain.fullBleed { padding-left: 82px; padding-bottom: 0; }
+  .lg-on .composer { bottom: 8px; }
+  .lg-on .attachRow { bottom: 68px; }
+  .lg-on .chatStream { padding-bottom: 84px; }
+}
