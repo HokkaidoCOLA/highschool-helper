@@ -16,6 +16,7 @@ import { subjectLabel, SUBJECTS } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { GradeButtons } from './shared.jsx'
 import ConvDrawer, { ConvPanel } from './ConvDrawer.jsx'
+import VBar from './VBar.jsx'
 import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot, IconMenu, IconPlus, IconPen, IconTrash } from './icons.jsx'
 
 const SUGGESTS = ['讲讲导数的几何意义，画个图', '抽查我 5 道物理', '这道题我又错了（拍照）', '帮我制定本周复习计划']
@@ -54,7 +55,7 @@ function DemoModal({ meta, onClose }) {
           <b className="grow">{meta.title}</b>
           <button type="button" className="btn sm" onClick={onClose}>关闭</button>
         </div>
-        <div ref={ref} className="demoModalStage" />
+        <div ref={ref} className="demoModalStage"><VBar forRef={ref} /></div>
       </div>
     </div>
   )

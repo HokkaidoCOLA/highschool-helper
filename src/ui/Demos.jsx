@@ -11,12 +11,14 @@ import { normalizeScene, sceneSummary, keySteps, KIND_LABELS } from '../core/sce
 import { subjectLabel } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { downloadText, toast } from './shared.jsx'
+import VBar from './VBar.jsx'
 
 export default function Demos() {
   const [current, setCurrent] = React.useState(null)
   const [saved, setSaved] = React.useState(() => store.listDemos({}, false))
   const [query, setQuery] = React.useState('')
   const stageRef = React.useRef(null)
+  const colRef = React.useRef(null)
   const [paste, setPaste] = React.useState(false)
   const [pasteText, setPasteText] = React.useState('')
 
@@ -60,8 +62,9 @@ export default function Demos() {
 
   return (
     <div className="pageDemos">
-      <div className="demoStageCol">
+      <div className="demoStageCol" ref={colRef}>
       <div ref={stageRef} className="demoHost big" />
+      <VBar forRef={colRef} />
       {current !== null ? (
         <div className="card">
           <div className="row">

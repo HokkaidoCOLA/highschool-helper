@@ -10,6 +10,7 @@ import { previewIntervals, mastery } from '../core/srs.js'
 import { subjectLabel } from '../core/subjects.js'
 import { GradeButtons, useTick, Chip } from './shared.jsx'
 import { showScene, hideStage } from '../engine/boot.js'
+import VBar from './VBar.jsx'
 
 function decorate(it) {
   const now = Date.now()
@@ -121,7 +122,7 @@ export default function Review({ subject, onChangeSubject, onExit }) {
         </select>
         <span className="deckPos">{idx + 1}/{queue.length}</span>
       </div>
-      <div ref={stageRef} className="demoHost" />
+      <div ref={stageRef} className="demoHost"><VBar forRef={stageRef} /></div>
       <div className="card reviewCard">
         <div className="cardMeta">
           <Chip subject={item.subject} />

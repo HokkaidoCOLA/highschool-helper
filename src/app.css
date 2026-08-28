@@ -166,7 +166,7 @@ textarea.input { resize: vertical; }
 
 /* 演示 */
 .demoHost { margin: 0 0 4px; }
-.demoHost:empty { display: none; }
+.demoHost:not(:has(> #hst-root)) { display: none; }
 .demoHost.big { min-height: 2px }
 /* 演示页两列包装：竖屏 display:contents 完全透传（零影响），横屏接管布局 */
 .demoStageCol, .demoListCol { display: contents; }
@@ -314,7 +314,7 @@ textarea.input { resize: vertical; }
   /* 复习：左演示画布（sticky），右翻卡 */
   .pageReview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 14px; align-items: start; }
   .pageReview > .deckHead { grid-column: 1 / -1; }
-  .pageReview > .demoHost:not(:empty) { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 96px); overflow-y: auto; overscroll-behavior: contain; }
+  .pageReview > .demoHost:has(> #hst-root) { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 96px); overflow-y: auto; overscroll-behavior: contain; }
   .pageReview > .reviewCard { grid-column: 2; }
   .pageReview .doneCard { grid-column: 1 / -1; }
 
@@ -354,3 +354,29 @@ textarea.input { resize: vertical; }
   .chatSide { display: flex; }
   .chatSide.off { display: none; }
 }
+
+/* ── 可见滚动条：移动 WebView 默认 overlay 自动隐藏，内容超出时没人知道能滚 ── */
+* { scrollbar-width: thin; scrollbar-color: rgba(91,124,250,.5) transparent }
+::-webkit-scrollbar { width: 5px; height: 5px }
+::-webkit-scrollbar-track { background: transparent }
+::-webkit-scrollbar-thumb { background: rgba(91,124,250,.5); border-radius: 3px }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: var(--brand) }
+@media (prefers-color-scheme: dark) {
+  * { scrollbar-color: rgba(125,149,255,.55) transparent }
+  ::-webkit-scrollbar-thumb { background: rgba(125,149,255,.55) }
+}
+/* 演示相关容器加宽到 7px，手指更容易点中拖动 */
+.appMain::-webkit-scrollbar, .demoStageCol::-webkit-scrollbar, .demoModalStage::-webkit-scrollbar,
+.pageReview > .demoHost::-webkit-scrollbar, .chatStream::-webkit-scrollbar, .drawerList::-webkit-scrollbar { width: 7px }
+.demoStageCol::-webkit-scrollbar-thumb, .demoModalStage::-webkit-scrollbar-thumb,
+.pageReview > .demoHost::-webkit-scrollbar-thumb { background: rgba(91,124,250,.6); border-radius: 4px }
+
+
+/* ── 虚拟滚动条（触屏 WebView 忽略 CSS 滚动条，用 DOM 画常驻条）──────────── */
+.demoStageCol, .demoModalStage, .demoHost, .chatStream { position: relative; }
+.vbarTrack { position: absolute; right: 2px; top: 4px; bottom: 4px; width: 7px; border-radius: 4px; background: rgba(91,124,250,.10); z-index: 6; touch-action: none; }
+.vbarThumb { position: absolute; left: 1px; right: 1px; min-height: 30px; border-radius: 4px; background: rgba(91,124,250,.65); pointer-events: none; }
+.vbarHit { position: absolute; left: -4px; right: -4px; cursor: grab; touch-action: none; }
+.vbarHit:active { cursor: grabbing; }
+.vbarHit:active + .vbarThumb, .vbarHit:active ~ .vbarThumb { background: var(--brand) }
+
