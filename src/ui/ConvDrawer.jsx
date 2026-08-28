@@ -5,6 +5,7 @@
  */
 import React from 'react'
 import { IconPen, IconTrash } from './icons.jsx'
+import { SUBJECTS } from '../core/subjects.js'
 
 /** 列表里的相对时间。 */
 export function fmtAgo(ts) {
@@ -51,7 +52,10 @@ export default function ConvDrawer({ open, convs, activeId, onClose, onNew, onSw
               <div className="convRow">
                 <div className="convText">
                   <div className="convTitle">{c.title}</div>
-                  <div className="convMeta">{c.busy ? '回复中 · ' : ''}{fmtAgo(c.updatedAt)}前 · {c.items.filter((i) => i.kind === 'user').length} 问</div>
+                  <div className="convMeta">
+                    {c.subject !== 'auto' ? <span className="chipDot" style={{ background: (SUBJECTS.find((x) => x.key === c.subject) || { color: '#888' }).color }} /> : null}
+                    {c.busy ? '回复中 · ' : ''}{fmtAgo(c.updatedAt)}前 · {c.items.filter((i) => i.kind === 'user').length} 问
+                  </div>
                 </div>
                 <button type="button" className="iconBtn xs" title="重命名" onClick={(e) => { e.stopPropagation(); setEditing(c.id); setDraft(c.title) }}><IconPen size={15} /></button>
                 <button type="button" className="iconBtn xs" title="删除" onClick={(e) => { e.stopPropagation(); if (window.confirm('删除「' + c.title + '」？对话记录会一并删除。')) onDelete(c.id) }}><IconTrash size={15} /></button>

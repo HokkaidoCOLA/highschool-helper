@@ -110,6 +110,9 @@ session.clearSession()
 ok('新会话清空消息流', session.getSession().items.length === 0)
 srv2.close()
 
+
+
+
 // ── 多会话管理（侧边栏的数据层）──
 const idA = session.getSession().activeId
 session.newConversation()
@@ -132,6 +135,33 @@ session.deleteConversation(idA)
 ok('删除后剩一个且自动切换', session.getSession().convs.length === 1 && session.getSession().activeId !== idA)
 session.deleteConversation(session.getSession().convs[0].id)
 ok('删光后自动新建空会话', session.getSession().convs.length === 1 && session.getSession().items.length === 0)
+
+// ── 学科层：锁定学科后 system 注入学科方法论；auto 注入声明指令 ──
+const seen = []
+const srv3 = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    seen.push(parsed.messages[0].content)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '好' } }] }))
+  })
+})
+await new Promise((r) => srv3.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srv3.address().port + '/v1', model: 'stub', apiKey: 'x' })
+session.newConversation()
+session.setConversationSubject(session.getSession().activeId, 'physics')
+await session.sendUser('斜面上的滑块怎么分析', [])
+ok('锁定物理 → system 含受力分析与模型词', seen[seen.length - 1].includes('受力分析') && seen[seen.length - 1].includes('传送带'))
+ok('锁定物理 → 不再含数学定义域指令', !seen[seen.length - 1].includes('定义域'))
+ok('基座与情境仍在', seen[seen.length - 1].includes('tutor_add_items'))
+session.newConversation()
+await session.sendUser('这道题讲讲', [])
+ok('auto 会话 → system 含学科声明指令', seen[seen.length - 1].includes('〔学科〕'))
+session.setConversationSubject(session.getSession().activeId, '不存在的科')
+ok('非法学科被拒（保持 auto）', session.getSession().convs.find((c) => c.id === session.getSession().activeId).subject === 'auto')
+srv3.close()
 
 bad.close()
 server.close()

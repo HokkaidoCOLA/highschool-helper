@@ -10,6 +10,7 @@
  */
 import { store, notify } from '../state.js'
 import { runAssistant } from './llm.js'
+import { SUBJECT_PROMPTS } from './prompts.js'
 import { convGetAll, convSet, convDel } from '../core/idb.js'
 
 let uid = 0
@@ -54,7 +55,7 @@ function persist(c) {
   clearTimeout(saveTimers.get(c.id) ?? 0)
   saveTimers.set(c.id, setTimeout(() => {
     const slim = {
-      id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt,
+      id: c.id, title: c.title, subject: c.subject, createdAt: c.createdAt, updatedAt: c.updatedAt,
       items: c.items, apiMessages: c.apiMessages,
     }
     convSet(c.id, JSON.stringify(slim)).catch(() => {})
@@ -76,6 +77,7 @@ export async function loadConversations() {
       convs.push({
         id: c.id, title: String(c.title || '新对话'),
         createdAt: Number(c.createdAt) || Date.now(), updatedAt: Number(c.updatedAt) || Date.now(),
+        subject: SUBJECT_PROMPTS[c.subject] !== undefined || c.subject === 'auto' ? c.subject : 'auto',
         items: Array.isArray(c.items) ? c.items : [],
         apiMessages: Array.isArray(c.apiMessages) ? c.apiMessages : [],
         busy: false, abort: null,
@@ -99,7 +101,7 @@ export function newConversation() {
   const c = {
     id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
     title: '新对话', createdAt: Date.now(), updatedAt: Date.now(),
-    items: [], apiMessages: [], busy: false, abort: null,
+    items: [], apiMessages: [], subject: 'auto', busy: false, abort: null,
   }
   state = { ...state, convs: [c, ...state.convs], activeId: c.id }
   emit()
@@ -125,6 +127,17 @@ export function renameConversation(id, title) {
 }
 
 /** 删除会话（在途请求先中止）；删掉活跃会话则自动切到下一个或新建。 */
+/** 锁定/解锁会话学科：auto 或六科键。下一轮对话即刻生效。 */
+export function setConversationSubject(id, subject) {
+  const c = state.convs.find((x) => x.id === id)
+  if (c !== undefined && (subject === 'auto' || SUBJECT_PROMPTS[subject] !== undefined)) {
+    c.subject = subject
+    c.updatedAt = Date.now()
+    persist(c)
+    emit()
+  }
+}
+
 export function deleteConversation(id) {
   const idx = state.convs.findIndex((c) => c.id === id)
   if (idx < 0) return
@@ -199,7 +212,7 @@ export function sendUser(text, images) {
   const ctrl = new AbortController()
   conv.abort = ctrl
   emit()
-  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal).then(
+  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal, { subject: conv.subject }).then(
     (final) => {
       if (final) pushItemTo(conv, { kind: 'assistant', text: final })
       notify()

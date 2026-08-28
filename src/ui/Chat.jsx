@@ -9,10 +9,10 @@
 import React from 'react'
 import { store } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
-import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation } from '../ai/session.js'
+import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject } from '../ai/session.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
-import { subjectLabel } from '../core/subjects.js'
+import { subjectLabel, SUBJECTS } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { GradeButtons } from './shared.jsx'
 import ConvDrawer from './ConvDrawer.jsx'
@@ -181,6 +181,15 @@ export default function Chat({ goSettings }) {
       ) : null}
       <div className="chatTop">
         <button type="button" className="iconBtn flat" title="历史对话" onClick={() => setDrawer(true)}><IconMenu /></button>
+        <select
+          className="input subjPick"
+          title="本会话学科"
+          value={(s.convs.find((c) => c.id === s.activeId) || { subject: 'auto' }).subject}
+          onChange={(e) => setConversationSubject(s.activeId, e.target.value)}
+        >
+          <option value="auto">自动</option>
+          {SUBJECTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+        </select>
         <div className="chatTopTitle">{(s.convs.find((c) => c.id === s.activeId) || { title: '新对话' }).title}</div>
         <button type="button" className="iconBtn flat" title="新对话" onClick={newConversation}><IconPlus /></button>
       </div>
