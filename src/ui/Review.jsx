@@ -94,7 +94,7 @@ export default function Review({ subject, onChangeSubject, onExit }) {
     return (
       <div>
         <div className="card doneCard">
-          <h2>本轮完成 🎉</h2>
+          <h2>本轮完成</h2>
           <div className="tallyRow">
             <span style={{ color: '#dc2626' }}>重来 {tally.again}</span>
             <span style={{ color: '#e08b1a' }}>困难 {tally.hard}</span>

@@ -7,7 +7,7 @@ import { store, notify } from '../state.js'
 import { SUBJECTS } from '../core/subjects.js'
 import { subjectLabel } from '../core/subjects.js'
 
-export default function Today({ goReview }) {
+export default function Today({ goReview, goSettings }) {
   const data = useOverview()
   const [minutes, setMinutes] = React.useState('30')
   const [logSubject, setLogSubject] = React.useState('math')
@@ -31,8 +31,16 @@ export default function Today({ goReview }) {
   return (
     <div>
       <div className="card hero">
-        <div className="heroDays">{data.countdown.days === null ? '未设置高考日期' : data.countdown.days}</div>
-        <div className="heroLabel">{data.countdown.days === null ? '去「设置」选择年级' : '天 · 距高考（' + (data.profile.examDate || '') + '）'}</div>
+        {data.countdown.days === null ? (
+          <div className="heroEmpty">还没设置高考日期
+            <button type="button" className="heroCta" onClick={goSettings}>去「设置」选年级 →</button>
+          </div>
+        ) : (
+          <div>
+            <div className="heroDays">{data.countdown.days}</div>
+            <div className="heroLabel">天 · 距高考（{data.profile.examDate}）</div>
+          </div>
+        )}
         <div className="heroRow">
           <Stat num={dueTotal} label="今日待复习" color={dueTotal > 0 ? '#dc2626' : '#16a34a'} />
           <Stat num={data.study.reviewedToday + '/' + data.study.reviewTarget} label="已复习/目标" />

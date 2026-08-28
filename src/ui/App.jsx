@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /** 应用骨架：底部导航八页，聊天为默认主页。 */
 import React from 'react'
+import { IconChat, IconToday, IconReview, IconLibrary, IconDemo, IconDocs, IconStats, IconSettings } from './icons.jsx'
 import Chat from './Chat.jsx'
 import Today from './Today.jsx'
 import Review from './Review.jsx'
@@ -11,14 +12,14 @@ import Stats from './Stats.jsx'
 import Settings from './Settings.jsx'
 
 const TABS = [
-  { key: 'chat', label: '聊天', C: Chat },
-  { key: 'today', label: '今日', C: Today },
-  { key: 'review', label: '复习', C: Review },
-  { key: 'library', label: '题库', C: Library },
-  { key: 'demos', label: '演示', C: Demos },
-  { key: 'docs', label: '资料', C: Docs },
-  { key: 'stats', label: '统计', C: Stats },
-  { key: 'settings', label: '设置', C: Settings },
+  { key: 'chat', label: '聊天', C: Chat, I: IconChat },
+  { key: 'today', label: '今日', C: Today, I: IconToday },
+  { key: 'review', label: '复习', C: Review, I: IconReview },
+  { key: 'library', label: '题库', C: Library, I: IconLibrary },
+  { key: 'demos', label: '演示', C: Demos, I: IconDemo },
+  { key: 'docs', label: '资料', C: Docs, I: IconDocs },
+  { key: 'stats', label: '统计', C: Stats, I: IconStats },
+  { key: 'settings', label: '设置', C: Settings, I: IconSettings },
 ]
 
 export default function App() {
@@ -44,7 +45,10 @@ export default function App() {
       </main>
       <nav className="appTabs eight">
         {TABS.map((t) => (
-          <button key={t.key} type="button" className={tab === t.key ? 'appTab on' : 'appTab'} onClick={() => setTab(t.key)}>{t.label}</button>
+          <button key={t.key} type="button" className={tab === t.key ? 'appTab on' : 'appTab'} onClick={() => setTab(t.key)}>
+            <t.I />
+            <span>{t.label}</span>
+          </button>
         ))}
       </nav>
     </div>

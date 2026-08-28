@@ -14,6 +14,9 @@ import { parseStudyText } from '../core/paper.js'
 import { subjectLabel } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { GradeButtons } from './shared.jsx'
+import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot } from './icons.jsx'
+
+const SUGGESTS = ['讲讲导数的几何意义，画个图', '抽查我 5 道物理', '这道题我又错了（拍照）', '帮我制定本周复习计划']
 
 let uid = 0
 const nextId = () => ++uid
@@ -208,13 +211,14 @@ export default function Chat({ goSettings }) {
       <div className="chatStream">
         {items.length === 0 ? (
           <div className="chatEmpty">
-            <p>试试：</p>
-            <ul>
-              <li>「给我讲讲导数的几何意义，画个图」</li>
-              <li>「抽查我 5 道物理」</li>
-              <li>「这道题我又错了」＋ 📷 拍照</li>
-              <li>📎 丢一份 Word 试卷进来</li>
-            </ul>
+            <div className="emptyIcon"><IconRobot size={40} /></div>
+            <h2>你的专属学习教练</h2>
+            <p>讲题、画图、拍照录错题、丢试卷进来批量入库</p>
+            <div className="suggestRow">
+              {SUGGESTS.map((s) => (
+                <button key={s} type="button" className="suggest" onClick={() => setInput(s)}>{s}</button>
+              ))}
+            </div>
           </div>
         ) : null}
         {items.map((it) => {
@@ -225,8 +229,8 @@ export default function Chat({ goSettings }) {
             </div>
           )
           if (it.kind === 'assistant') return <div className="msg assistant" key={it.id}><div className="msgBody">{it.text}</div></div>
-          if (it.kind === 'tool') return <div className={'toolLine ' + (it.ok ? '' : 'bad')} key={it.id}>⚙ {it.label}{it.ok ? '' : '（' + it.error + '）'}</div>
-          if (it.kind === 'error') return <div className="toolLine bad" key={it.id}>✗ {it.text}</div>
+          if (it.kind === 'tool') return <div className={'toolLine ' + (it.ok ? '' : 'bad')} key={it.id}>{it.label}{it.ok ? '' : '（' + it.error + '）'}</div>
+          if (it.kind === 'error') return <div className="toolLine bad" key={it.id}>{it.text}</div>
           if (it.kind === 'notice') return <div className="toolLine" key={it.id}>{it.text}</div>
           if (it.kind === 'demo') return (
             <div className="card demoMsg" key={it.id}>
@@ -251,9 +255,9 @@ export default function Chat({ goSettings }) {
         <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { pickImages(e.target.files); e.target.value = '' }} />
         <input ref={galleryRef} type="file" accept="image/*" multiple hidden onChange={(e) => { pickImages(e.target.files); e.target.value = '' }} />
         <input ref={fileRef} type="file" accept=".docx,.pptx,.txt,.md,.markdown,.csv,.html,.htm" hidden onChange={(e) => { pickFile(e.target.files); e.target.value = '' }} />
-        <button type="button" className="iconBtn" title="拍照" onClick={() => camRef.current.click()}>📷</button>
-        <button type="button" className="iconBtn" title="相册" onClick={() => galleryRef.current.click()}>🖼</button>
-        <button type="button" className="iconBtn" title="文档" onClick={() => fileRef.current.click()}>📎</button>
+        <button type="button" className="iconBtn" title="拍照" onClick={() => camRef.current.click()}><IconCamera /></button>
+        <button type="button" className="iconBtn" title="相册" onClick={() => galleryRef.current.click()}><IconImage /></button>
+        <button type="button" className="iconBtn" title="文档" onClick={() => fileRef.current.click()}><IconClip /></button>
         <textarea
           className="input grow composerInput"
           rows={1}
@@ -263,8 +267,8 @@ export default function Chat({ goSettings }) {
           onKeyDown={keyDown}
         />
         {busy
-          ? <button type="button" className="iconBtn stop" onClick={stop} title="停止">■</button>
-          : <button type="button" className="iconBtn send" onClick={send} title="发送">➤</button>}
+          ? <button type="button" className="iconBtn stop" onClick={stop} title="停止"><IconStop /></button>
+          : <button type="button" className="iconBtn send" onClick={send} title="发送"><IconSend /></button>}
       </div>
       {modal !== null ? <DemoModal meta={modal} onClose={() => setModal(null)} /> : null}
     </div>

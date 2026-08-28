@@ -21,6 +21,11 @@ function ok(label, cond, extra) {
 }
 
 await store.load()
+// 回归护栏：全新安装（未设年级、零数据）也必须能渲染——真机白屏事故出自这里
+for (const [name, node] of [['Today 空态', <Today goReview={() => {}} goSettings={() => {}} />], ['Review 空态', <Review onChangeSubject={() => {}} />], ['Stats 空态', <Stats />]]) {
+  try { rs(node); console.log('  ✓ ' + name) }
+  catch (err) { console.error('  ✗ ' + name + ' → ' + String(err && err.message ? err.message : err)); process.exit(1) }
+}
 store.saveProfile({ grade: 'g2', dailyReviewTarget: 40 })
 store.upsertItems(seedItems())
 store.upsertItems([{ subject: 'math', kind: 'mistake', topic: '一元函数的导数及其应用', question: '求 f(x)=x^3-3x 极小值', answer: 'f(1)=-2', explanation: '先求导找驻点', source: '自测', tags: ['计算失误'] }])
