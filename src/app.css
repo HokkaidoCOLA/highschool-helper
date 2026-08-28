@@ -688,3 +688,44 @@ body::after {
   .lg-on .attachRow { bottom: 68px; }
   .lg-on .chatStream { padding-bottom: 84px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIQUID GLASS v7：去奶白
+   白感 = 白纱(.34/.30) + sheen(.55) + 镜面亮斑(.50) + 白描边(.8) 四层叠加。
+   全部降档，并把 saturate 提到 2.1：玻璃该透出身后的颜色，而不是自己的白。
+   ══════════════════════════════════════════════════════════════════════ */
+.lg-on {
+  --glass-bg: linear-gradient(150deg, rgba(255,255,255,.18), rgba(255,255,255,.05));
+  --glass-bg-strong: linear-gradient(150deg, rgba(255,255,255,.32), rgba(255,255,255,.14));
+  --glass-rim: rgba(255,255,255,.55);
+  --glass-hi: rgba(255,255,255,.70);
+  --sheen: linear-gradient(115deg, rgba(255,255,255,.26), rgba(255,255,255,.04) 34%, rgba(255,255,255,0) 55%);
+}
+@media (prefers-color-scheme: dark) {
+  .lg-on {
+    --glass-bg: linear-gradient(150deg, rgba(96,106,132,.26), rgba(48,53,68,.18));
+    --glass-bg-strong: linear-gradient(150deg, rgba(96,106,132,.44), rgba(48,53,68,.30));
+    --glass-rim: rgba(255,255,255,.16);
+    --glass-hi: rgba(255,255,255,.22);
+  }
+}
+/* 镜面高光减弱：亮斑从 50% 白降到 28% */
+.lg-on .appTabs::after, .lg-on .composer::after, .lg-on .chatTop::after,
+.lg-on .hero::after, .lg-on .chatSide::after, .lg-on .drawer::after,
+.lg-on .modal::after, .lg-on .demoModal::after {
+  background: radial-gradient(220px 150px at var(--gx, 50%) var(--gy, -60px),
+    rgba(255,255,255,.28), rgba(255,255,255,.08) 42%, rgba(255,255,255,0) 68%);
+}
+/* 饱和拉高：白纱减了，颜色要更浓才不显灰 */
+.lg-on .card, .lg-on .item, .lg-on .msg.assistant, .lg-on .toolLine, .lg-on .suggest,
+.lg-on .demoCard, .lg-on .btn, .lg-on .chip, .lg-on .seg, .lg-on .iconBtn, .lg-on .gradeBtn {
+  -webkit-backdrop-filter: blur(20px) saturate(2.0); backdrop-filter: blur(20px) saturate(2.0);
+}
+.lg-on .appTabs, .lg-on .composer, .lg-on .modal, .lg-on .demoModal {
+  -webkit-backdrop-filter: blur(30px) saturate(2.1); backdrop-filter: blur(30px) saturate(2.1);
+}
+.lg-on .chatSide, .lg-on .drawer {
+  -webkit-backdrop-filter: blur(28px) saturate(2.1); backdrop-filter: blur(28px) saturate(2.1);
+}
+/* 头部与 hero 的品牌面也减白膜 */
+.lg-on .appHeader { background: linear-gradient(135deg, rgba(91,124,250,.92), rgba(124,92,246,.92)); }
