@@ -276,7 +276,7 @@ export default function Chat({ goSettings }) {
         <textarea
           className="input grow composerInput"
           rows={1}
-          placeholder={cfg.model ? '问点什么，或拍照/丢文件…' : '先接模型（设置→AI 接入）…'}
+          placeholder={cfg.model ? '问点什么，或拍照/丢文件…' : '先到设置接模型…'}
           value={s.draftText}
           onChange={(e) => setDraftText(e.target.value)}
           onKeyDown={keyDown}
