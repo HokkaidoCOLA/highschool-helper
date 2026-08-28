@@ -7,6 +7,7 @@
 import React from 'react'
 import { IconPen, IconTrash } from './icons.jsx'
 import { SUBJECTS } from '../core/subjects.js'
+import VBar from './VBar.jsx'
 
 /** 列表里的相对时间。 */
 export function fmtAgo(ts) {
@@ -20,6 +21,7 @@ export function fmtAgo(ts) {
 
 /** 面板主体（不含抽屉外壳），供抽屉与常驻侧栏复用。 */
 export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename, onDelete, compact }) {
+  const listRef = React.useRef(null)
   const [editing, setEditing] = React.useState(null)
   const [draft, setDraft] = React.useState('')
   const commit = () => {
@@ -33,7 +35,7 @@ export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename,
         <b>历史对话</b>
         <button type="button" className="btn sm primary" onClick={() => { onNew(); if (onClose !== undefined) onClose() }}>＋ 新对话</button>
       </div>
-      <div className="drawerList">
+      <div className="drawerList" ref={listRef}><VBar forRef={listRef} />
         {convs.length === 0 ? <p className="hint" style={{ padding: 12 }}>还没有对话</p> : null}
         {convs.map((c) => (
           <div

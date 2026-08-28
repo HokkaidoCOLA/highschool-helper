@@ -373,10 +373,9 @@ textarea.input { resize: vertical; }
 
 
 /* ── 虚拟滚动条（触屏 WebView 忽略 CSS 滚动条，用 DOM 画常驻条）──────────── */
-.demoStageCol, .demoModalStage, .demoHost, .chatStream { position: relative; }
+.demoStageCol, .demoModalStage, .demoHost, .chatStream, .drawerList { position: relative; }
 .vbarTrack { position: absolute; right: 2px; top: 4px; bottom: 4px; width: 7px; border-radius: 4px; background: rgba(91,124,250,.10); z-index: 6; touch-action: none; }
 .vbarThumb { position: absolute; left: 1px; right: 1px; min-height: 30px; border-radius: 4px; background: rgba(91,124,250,.65); pointer-events: none; }
 .vbarHit { position: absolute; left: -4px; right: -4px; cursor: grab; touch-action: none; }
 .vbarHit:active { cursor: grabbing; }
 .vbarHit:active + .vbarThumb, .vbarHit:active ~ .vbarThumb { background: var(--brand) }
-
