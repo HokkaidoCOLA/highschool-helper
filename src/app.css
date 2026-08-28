@@ -594,3 +594,38 @@ body::after {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .card, .modal, .demoModal, .appTabs, .composer, .chatSide, .drawer, .msg.assistant, .item { background: rgba(248,249,253,.96); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIQUID GLASS v3：实时光效（配合 src/ui/glass.js）
+   .lg-on 由引擎在确认 backdrop-filter: url() 可用后挂到 <html>；
+   不支持的环境整段不生效，v2 的 blur 玻璃原样保留。
+   ══════════════════════════════════════════════════════════════════════ */
+/* ① 折射：SVG 位移滤镜实时采样玻璃身后像素（滚动时边缘颜色真实弯折） */
+.lg-on .appTabs, .lg-on .composer, .lg-on .chatTop, .lg-on .hero,
+.lg-on .chatSide, .lg-on .drawer, .lg-on .modal, .lg-on .demoModal {
+  -webkit-backdrop-filter: url(#hst-liquid) saturate(1.8);
+  backdrop-filter: url(#hst-liquid) saturate(1.8);
+}
+
+/* ② 高光：--gx/--gy 是引擎每帧写入的光源局部坐标 */
+.lg-on .appTabs, .lg-on .composer, .lg-on .chatTop, .lg-on .hero,
+.lg-on .chatSide, .lg-on .drawer, .lg-on .modal, .lg-on .demoModal { position: relative; }
+.lg-on .appTabs::after, .lg-on .composer::after, .lg-on .chatTop::after,
+.lg-on .hero::after, .lg-on .chatSide::after, .lg-on .drawer::after,
+.lg-on .modal::after, .lg-on .demoModal::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 1;
+  background:
+    radial-gradient(220px 150px at var(--gx, 50%) var(--gy, -60px),
+      rgba(255,255,255,.50), rgba(255,255,255,.14) 42%, rgba(255,255,255,0) 68%);
+}
+.lg-on .hero::after, .lg-on .btn.primary::after { mix-blend-mode: soft-light; }
+/* 内容别盖过高光层 */
+.lg-on .appTabs > *, .lg-on .composer > *, .lg-on .chatTop > *,
+.lg-on .hero > *, .lg-on .modal > *, .lg-on .demoModal > *,
+.lg-on .drawer > *, .lg-on .chatSide > * { position: relative; z-index: 2; }
+
+/* ③ 边缘亮线：靠近光源的一侧更亮（用 conic 近似弧面反射） */
+.lg-on .appTabs, .lg-on .composer, .lg-on .modal, .lg-on .demoModal {
+  border-color: rgba(255,255,255,.9);
+}

@@ -6,8 +6,10 @@ import './app.css'
 import { store } from './state.js'
 import { loadConversations } from './ai/session.js'
 import { watchViewport } from './ui/viewport.js'
+import { initGlass } from './ui/glass.js'
 
 watchViewport()
+initGlass()
 
 // 先水合数据再渲染：Store 的读取是同步接口（与插件版一致），load() 是唯一异步入口。
 Promise.all([store.load(), loadConversations()]).then(
