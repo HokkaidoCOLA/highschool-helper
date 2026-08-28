@@ -729,3 +729,63 @@ body::after {
 }
 /* 头部与 hero 的品牌面也减白膜 */
 .lg-on .appHeader { background: linear-gradient(135deg, rgba(91,124,250,.92), rgba(124,92,246,.92)); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIQUID GLASS v8：治"显白+太浓"的同一个根
+   之前玻璃显白，是因为页面底色近纯白、光斑是淡粉——糊出来只能是白的；
+   靠 saturate 硬提浓又显得艳。正解：背景光斑直接换浓郁色，
+   玻璃透出的就是真实颜色，饱和度反而可以降回 1.5（BiliPai BALANCED 值）。
+   ══════════════════════════════════════════════════════════════════════ */
+:root { --bg: #eef1f9; }
+body::before {
+  background:
+    radial-gradient(32% 28% at 18% 20%, rgba(59,91,245,.78), transparent 68%),
+    radial-gradient(28% 26% at 80% 12%, rgba(139,72,240,.70), transparent 68%),
+    radial-gradient(34% 30% at 66% 82%, rgba(24,168,218,.62), transparent 70%);
+}
+body::after {
+  background:
+    radial-gradient(28% 26% at 34% 60%, rgba(236,72,153,.55), transparent 70%),
+    radial-gradient(26% 24% at 90% 48%, rgba(124,58,237,.58), transparent 70%),
+    radial-gradient(30% 28% at 8% 90%, rgba(13,148,136,.50), transparent 70%);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d0f14; }
+  body::before {
+    background:
+      radial-gradient(32% 28% at 18% 20%, rgba(76,110,255,.50), transparent 68%),
+      radial-gradient(28% 26% at 80% 12%, rgba(154,92,255,.44), transparent 68%),
+      radial-gradient(34% 30% at 66% 82%, rgba(34,197,230,.34), transparent 70%);
+  }
+  body::after {
+    background:
+      radial-gradient(28% 26% at 34% 60%, rgba(244,114,182,.30), transparent 70%),
+      radial-gradient(26% 24% at 90% 48%, rgba(139,92,246,.34), transparent 70%),
+      radial-gradient(30% 28% at 8% 90%, rgba(20,184,166,.26), transparent 70%);
+  }
+}
+
+/* 白纱趋近于零：颜色交给背景，玻璃只留一点点"膜" */
+.lg-on {
+  --glass-bg: linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.02));
+  --glass-bg-strong: linear-gradient(150deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
+  --glass-rim: rgba(255,255,255,.45);
+  --sheen: linear-gradient(115deg, rgba(255,255,255,.18), rgba(255,255,255,.03) 34%, rgba(255,255,255,0) 55%);
+}
+@media (prefers-color-scheme: dark) {
+  .lg-on {
+    --glass-bg: linear-gradient(150deg, rgba(120,132,164,.16), rgba(50,56,74,.12));
+    --glass-bg-strong: linear-gradient(150deg, rgba(110,122,152,.34), rgba(52,58,76,.24));
+  }
+}
+/* 饱和度降回自然档 */
+.lg-on .card, .lg-on .item, .lg-on .msg.assistant, .lg-on .toolLine, .lg-on .suggest,
+.lg-on .demoCard, .lg-on .btn, .lg-on .chip, .lg-on .seg, .lg-on .iconBtn, .lg-on .gradeBtn {
+  -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);
+}
+.lg-on .appTabs, .lg-on .composer, .lg-on .modal, .lg-on .demoModal {
+  -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5);
+}
+.lg-on .chatSide, .lg-on .drawer {
+  -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
+}
