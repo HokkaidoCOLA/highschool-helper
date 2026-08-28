@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * 会话抽屉（Kimi 式左侧栏）：新建 / 切换 / 重命名 / 删除历史对话。
+ * 会话面板（Kimi 式）：新建 / 切换 / 重命名 / 删除历史对话。
+ * 两种宿主共用：竖屏的覆盖式抽屉（ConvDrawer）、横屏/平板的常驻左列（ConvPanel 裸用）。
  * 数据来自 ai/session.js 的会话单例；删除确认用原生 confirm（发生在任何写入之前）。
  */
 import React from 'react'
@@ -17,18 +18,20 @@ export function fmtAgo(ts) {
   return Math.round(h / 24) + ' 天'
 }
 
-export default function ConvDrawer({ open, convs, activeId, onClose, onNew, onSwitch, onRename, onDelete }) {
+/** 面板主体（不含抽屉外壳），供抽屉与常驻侧栏复用。 */
+export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename, onDelete, compact }) {
   const [editing, setEditing] = React.useState(null)
   const [draft, setDraft] = React.useState('')
   const commit = () => {
     if (editing !== null && draft.trim() !== '') onRename(editing, draft.trim())
     setEditing(null)
   }
+  const pick = (id) => { onSwitch(id); if (onClose !== undefined) onClose() }
   return (
-    <aside className={'drawer' + (open ? ' open' : '')}>
+    <div className={'convPanel' + (compact === true ? ' compact' : '')}>
       <div className="drawerHead">
         <b>历史对话</b>
-        <button type="button" className="btn sm primary" onClick={() => { onNew(); onClose() }}>＋ 新对话</button>
+        <button type="button" className="btn sm primary" onClick={() => { onNew(); if (onClose !== undefined) onClose() }}>＋ 新对话</button>
       </div>
       <div className="drawerList">
         {convs.length === 0 ? <p className="hint" style={{ padding: 12 }}>还没有对话</p> : null}
@@ -36,7 +39,7 @@ export default function ConvDrawer({ open, convs, activeId, onClose, onNew, onSw
           <div
             key={c.id}
             className={'convItem' + (c.id === activeId ? ' on' : '')}
-            onClick={() => { if (editing === null) { onSwitch(c.id); onClose() } }}
+            onClick={() => { if (editing === null) pick(c.id) }}
           >
             {editing === c.id ? (
               <input
@@ -64,6 +67,15 @@ export default function ConvDrawer({ open, convs, activeId, onClose, onNew, onSw
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** 竖屏：覆盖式抽屉。 */
+export default function ConvDrawer({ open, ...panelProps }) {
+  return (
+    <aside className={'drawer' + (open ? ' open' : '')}>
+      <ConvPanel {...panelProps} />
     </aside>
   )
 }

@@ -332,3 +332,25 @@ textarea.input { resize: vertical; }
 }
 
 .subjPick { flex: none; width: 76px; padding: 5px 22px 5px 8px; font-size: 12.5px; border-radius: 10px; }
+
+/* ── 聊天分栏布局：侧栏与主区并列（横屏/平板），竖屏退回覆盖抽屉 ─── */
+.chatSplit { flex: 1; display: flex; min-height: 0; }
+.chatMain { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.chatSide { display: none; flex: none; width: 216px; background: var(--card); border-right: 1px solid var(--line); min-height: 0; }
+.chatSide.off { display: none; }
+.convPanel { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
+.convPanel .drawerHead { padding: 12px 12px 10px; }
+.convPanel .drawerList { padding: 6px; }
+
+
+
+/* 平板/桌面横屏：高度充足时也启用常驻侧栏 */
+@media (orientation: landscape) and (min-height: 561px) {
+  .chatSide { display: flex; }
+  .chatSide.off { display: none; }
+}
+/* ── 侧栏显隐总控（放最后：覆盖上面的 display:none 默认） ──────────────── */
+@media (orientation: landscape) {
+  .chatSide { display: flex; }
+  .chatSide.off { display: none; }
+}

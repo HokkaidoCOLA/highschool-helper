@@ -15,7 +15,7 @@ import { parseStudyText } from '../core/paper.js'
 import { subjectLabel, SUBJECTS } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { GradeButtons } from './shared.jsx'
-import ConvDrawer from './ConvDrawer.jsx'
+import ConvDrawer, { ConvPanel } from './ConvDrawer.jsx'
 import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot, IconMenu, IconPlus, IconPen, IconTrash } from './icons.jsx'
 
 const SUGGESTS = ['讲讲导数的几何意义，画个图', '抽查我 5 道物理', '这道题我又错了（拍照）', '帮我制定本周复习计划']
@@ -127,10 +127,23 @@ function FileCard({ f }) {
   )
 }
 
+const LAND_MQ = '(orientation: landscape) and (max-height: 560px)'
+
 export default function Chat({ goSettings }) {
   const s = useSession()
   const [modal, setModal] = React.useState(null)
   const [drawer, setDrawer] = React.useState(false)
+  const [sidebarOpen, setSidebarOpen] = React.useState(true)
+  // 横屏（手机横屏/平板）：侧栏与聊天区分栏并列；竖屏：覆盖式抽屉
+  const isLandscape = React.useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia(LAND_MQ)
+      if (typeof mq.addEventListener === 'function') mq.addEventListener('change', cb); else mq.addListener(cb)
+      return () => { if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', cb); else mq.removeListener(cb) }
+    },
+    () => window.matchMedia(LAND_MQ).matches,
+    () => false,
+  )
   const bottomRef = React.useRef(null)
   const camRef = React.useRef(null)
   const galleryRef = React.useRef(null)
@@ -172,15 +185,21 @@ export default function Chat({ goSettings }) {
 
   return (
     <div className="chatPage">
-      {!aiReady() ? (
-        <div className="card aiSetupHint">
-          <b>还没有接模型</b>
-          <p className="hint">到「设置 → AI 接入」填 baseUrl / model / apiKey（任意 OpenAI 兼容服务），之后这里就能对话讲题、拍照录题；题库、复习、演示等页面不接模型也照常可用。</p>
-          <button type="button" className="btn primary" onClick={goSettings}>去设置</button>
+      <div className="chatSplit">
+        <div className={'chatSide' + (sidebarOpen && isLandscape ? '' : ' off')}>
+          <ConvPanel
+            compact
+            convs={s.convs}
+            activeId={s.activeId}
+            onNew={newConversation}
+            onSwitch={switchConversation}
+            onRename={renameConversation}
+            onDelete={deleteConversation}
+          />
         </div>
-      ) : null}
+        <div className="chatMain">
       <div className="chatTop">
-        <button type="button" className="iconBtn flat" title="历史对话" onClick={() => setDrawer(true)}><IconMenu /></button>
+        <button type="button" className="iconBtn flat" title="历史对话" onClick={() => (isLandscape ? setSidebarOpen((v) => !v) : setDrawer(true))}><IconMenu /></button>
         <select
           className="input subjPick"
           title="本会话学科"
@@ -193,6 +212,13 @@ export default function Chat({ goSettings }) {
         <div className="chatTopTitle">{(s.convs.find((c) => c.id === s.activeId) || { title: '新对话' }).title}</div>
         <button type="button" className="iconBtn flat" title="新对话" onClick={newConversation}><IconPlus /></button>
       </div>
+      {!aiReady() ? (
+        <div className="card aiSetupHint">
+          <b>还没有接模型</b>
+          <p className="hint">到「设置 → AI 接入」填 baseUrl / model / apiKey（任意 OpenAI 兼容服务），之后这里就能对话讲题、拍照录题；题库、复习、演示等页面不接模型也照常可用。</p>
+          <button type="button" className="btn primary" onClick={goSettings}>去设置</button>
+        </div>
+      ) : null}
       <div className="chatStream">
         {s.items.length === 0 ? (
           <div className="chatEmpty">
@@ -254,6 +280,8 @@ export default function Chat({ goSettings }) {
         {s.busy
           ? <button type="button" className="iconBtn stop" onClick={stopUser} title="停止"><IconStop /></button>
           : <button type="button" className="iconBtn send" onClick={send} title="发送"><IconSend /></button>}
+      </div>
+        </div>
       </div>
       {drawer ? <div className="scrim" onClick={() => setDrawer(false)} /> : null}
       <ConvDrawer
