@@ -11,9 +11,39 @@ import { syllabusFor } from '../core/syllabus.js'
 import { dataDir } from '../core/store.js'
 import { useTick, downloadText, toast } from './shared.jsx'
 import { loadAiConfig, saveAiConfig, testConnection, DEFAULT_SYSTEM } from '../ai/llm.js'
+import { loadGlassTune, applyGlassTune, GLASS_DEFAULTS } from './glass.js'
 
 const FILENAMES = ['profile.json', 'items.json', 'reviews.json', 'studylog.json', 'exams.json', 'demos.json']
 
+/** 液态玻璃调参：滑杆即时生效（写 CSS 变量 + SVG 滤镜），localStorage 持久化。 */
+function GlassCard() {
+  const [t, setT] = React.useState(() => loadGlassTune())
+  const upd = (k) => (e) => {
+    const next = { ...t, [k]: Number(e.target.value) }
+    setT(next); applyGlassTune(next)
+  }
+  const reset = () => { setT({ ...GLASS_DEFAULTS }); applyGlassTune({ ...GLASS_DEFAULTS }) }
+  const row = (k, label, min, max, unit) => (
+    <label className="slider" key={k}><b>{label}</b>
+      <input type="range" min={min} max={max} step="1" value={t[k]} onChange={upd(k)} />
+      <i>{t[k]}{unit}</i></label>
+  )
+  return (
+    <div className="card">
+      <h3>液态玻璃</h3>
+      <p className="hint">拖动即时预览（当前页就能看到），自动保存在本机。</p>
+      {row('veil', '白纱', 0, 40, '%')}
+      {row('blur', '磨砂', 0, 40, 'px')}
+      {row('sat', '饱和', 80, 250, '%')}
+      {row('blob', '背景光斑', 0, 150, '%')}
+      {row('disp', '折射强度', 0, 60, 'px')}
+      {row('band', '折射带宽', 8, 30, '%')}
+      {row('sheen', '高光', 0, 40, '%')}
+      {row('rim', '描边', 0, 80, '%')}
+      <div className="row"><button type="button" className="btn sm" onClick={reset}>恢复默认</button></div>
+    </div>
+  )
+}
 function AiCard() {
   const initial = loadAiConfig()
   const [form, setForm] = React.useState({
@@ -163,6 +193,7 @@ export default function Settings() {
       </div>
 
       <AiCard />
+      <GlassCard />
 
       <div className="card">
         <h3>教材章节进度（人教版新教材）</h3>
