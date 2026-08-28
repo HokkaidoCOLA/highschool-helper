@@ -17,7 +17,7 @@ function Editor({ value, onClose, onSaved }) {
   const [form, setForm] = React.useState(value || EMPTY)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const save = () => {
-    if (form.question.trim() === '') { window.alert('题干不能为空'); return }
+    if (form.question.trim() === '') { toast('题干不能为空'); return }
     const item = { ...form, tags: form.tags === '' ? [] : String(form.tags).split(/[,，\s]+/).filter(Boolean) }
     const r = store.upsertItems([item])
     notify()
@@ -62,7 +62,7 @@ function Importer({ onClose }) {
     const res = store.upsertItems(r.items)
     notify()
     onClose()
-    window.alert('导入完成：新增 ' + res.added.length + ' 条、更新 ' + res.updated.length + ' 条、跳过 ' + res.skipped + ' 条')
+    toast('导入完成：新增 ' + res.added.length + ' 条、更新 ' + res.updated.length + ' 条、跳过 ' + res.skipped + ' 条')
   }
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -121,7 +121,7 @@ export default function Library() {
   const seed = () => {
     const r = store.upsertItems(seedItems())
     notify()
-    window.alert('内置卡片包：新增 ' + r.added.length + ' 条、更新 ' + r.updated.length + ' 条（共 ' + seedItems().length + ' 张，重复导入不会产生重复条目）')
+    toast('内置卡片包：新增 ' + r.added.length + ' 条、更新 ' + r.updated.length + ' 条（共 ' + seedItems().length + ' 张，重复导入不会产生重复条目）')
   }
 
   return (

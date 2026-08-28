@@ -10,7 +10,7 @@ import { SHOWCASE } from '../core/showcase.js'
 import { normalizeScene, sceneSummary, keySteps, KIND_LABELS } from '../core/scene.js'
 import { subjectLabel } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
-import { downloadText } from './shared.jsx'
+import { downloadText, toast } from './shared.jsx'
 
 export default function Demos() {
   const [current, setCurrent] = React.useState(null)
@@ -39,14 +39,14 @@ export default function Demos() {
     try {
       const raw = JSON.parse(pasteText)
       const { scene, warnings } = normalizeScene(raw.scene !== undefined ? raw.scene : raw, { title: raw.title })
-      if (scene.objects.length === 0 && scene.kind !== 'html') { window.alert('没有可绘制对象：' + warnings.join('；')); return }
+      if (scene.objects.length === 0 && scene.kind !== 'html') { toast('没有可绘制对象：' + warnings.join('；')); return }
       store.saveDemo({ title: scene.title, kind: scene.kind, subject: scene.subject, topic: scene.topic, summary: sceneSummary(scene), keySteps: keySteps(scene), scene })
       setSaved(store.listDemos({}, false))
       notify()
       setPaste(false)
       setPasteText('')
     } catch (err) {
-      window.alert('JSON 解析失败：' + String(err && err.message ? err.message : err))
+      toast('JSON 解析失败：' + String(err && err.message ? err.message : err))
     }
   }
   const removeDemo = (id) => {

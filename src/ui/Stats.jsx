@@ -3,7 +3,7 @@
 import React from 'react'
 import { store, notify } from '../state.js'
 import { SUBJECTS, subjectLabel } from '../core/subjects.js'
-import { useTick } from './shared.jsx'
+import { useTick, toast } from './shared.jsx'
 
 function DailyChart({ series }) {
   if (series.length === 0) return <p className="hint">暂无数据</p>
@@ -53,11 +53,11 @@ function ExamForm() {
   const [rank, setRank] = React.useState('')
   const save = () => {
     const list = Object.entries(scores).filter(([, v]) => v !== '' && Number.isFinite(Number(v))).map(([k, v]) => ({ subject: k, score: Number(v) }))
-    if (list.length === 0) { window.alert('至少填一科分数'); return }
+    if (list.length === 0) { toast('至少填一科分数'); return }
     store.saveExam({ name: name || '模考', date: date || undefined, scores: list, rank: rank === '' ? undefined : Number(rank) })
     notify()
     setName(''); setDate(''); setScores({}); setRank('')
-    window.alert('成绩已记录')
+    toast('成绩已记录')
   }
   return (
     <div className="examForm">

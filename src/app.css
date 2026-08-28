@@ -235,3 +235,7 @@ textarea.input { resize: vertical; }
 .aiSetupHint { border-left: 4px solid var(--warn); }
 .aiSetupHint .btn { margin-top: 8px; }
 .heroCta { display: block; margin: 12px auto 2px; appearance: none; border: 0; background: rgba(255,255,255,.18); color: #fff; font: inherit; font-size: 13px; font-weight: 600; border-radius: 12px; padding: 8px 16px; cursor: pointer; }
+/* toast */
+.hstToast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(10px); background: rgba(23,26,33,.93); color: #fff; font-size: 13px; line-height: 1.5; padding: 10px 18px; border-radius: 22px; opacity: 0; pointer-events: none; transition: opacity .22s, transform .22s; z-index: 200; max-width: 86%; text-align: center; box-shadow: var(--shadow-lg); }
+.hstToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.hstToast.bad { background: rgba(229,72,77,.95); }

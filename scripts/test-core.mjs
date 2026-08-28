@@ -140,6 +140,37 @@ ok('scene \u89c4\u8303\u5316\uff08geom3d \u793a\u4f8b\uff09', () => {
   assert.ok(norm.scene.objects.length > 0)
 })
 
+
+// ──  IDB 写语义（真机数据丢失事故防回归）：连接预热后，put 必须在调用同一任务内派发 ──
+const dispatched = []
+globalThis.indexedDB = {
+  open: () => {
+    const req = {}
+    setTimeout(() => {
+      req.result = {
+        transaction: () => {
+          const tx = {
+            objectStore: () => ({
+              put: (v, k) => { dispatched.push(k); setTimeout(() => tx.oncomplete && tx.oncomplete(), 0) },
+              delete: () => { setTimeout(() => tx.oncomplete && tx.oncomplete(), 0) },
+              openCursor: () => ({ set onsuccess(_h) {} }),
+            }),
+          }
+          return tx
+        },
+      }
+      if (req.onsuccess) req.onsuccess()
+    }, 0)
+    return req
+  },
+}
+const idbMod = await import('./../src/core/idb.js')
+await idbMod.prime()
+const doneP = idbMod.idbSet('items.json', '{}')
+ok('put 在 idbSet 同一任务内同步派发（alert 阻塞也不丢）', () => assert.ok(dispatched.includes('items.json')))
+await doneP
+ok('事务 commit 后 promise 解决', () => assert.ok(true))
+
 console.log('')
 if (process.exitCode) console.error('\u5b58\u5728\u5931\u8d25\u9879')
 else console.log('\u2705 \u6838\u5fc3\u79fb\u690d\u56de\u5f52\u901a\u8fc7 ' + passed + ' \u9879')

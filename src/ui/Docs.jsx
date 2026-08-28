@@ -1,3 +1,4 @@
+import { toast } from './shared.jsx'
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
  * 资料页：Word 试卷 / PPT 课件 / 文本 → 切题与答案回填 → 预览勾选 → 入库（对应插件「资料」标签 + tutor_paper_import）。
@@ -56,7 +57,7 @@ export default function Docs() {
     const list = picked.map((it) => ({ subject: it.subject, kind: it.kind, topic: it.topic, question: it.question, answer: it.answer, explanation: it.explanation, tags: it.tags, difficulty: it.difficulty, source: it.source, grade: it.grade }))
     const r = store.upsertItems(list)
     notify()
-    window.alert('入库完成：新增 ' + r.added.length + ' 条、跳过 ' + r.skipped + ' 条，已按艾宾浩斯自动排期。')
+    toast('入库完成：新增 ' + r.added.length + ' 条、跳过 ' + r.skipped + ' 条，已按艾宾浩斯自动排期。')
     setParsed(null); setText('')
   }
 

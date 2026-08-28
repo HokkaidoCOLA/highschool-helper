@@ -9,7 +9,7 @@ import { store, notify } from '../state.js'
 import { SUBJECTS, subjectLabel } from '../core/subjects.js'
 import { syllabusFor } from '../core/syllabus.js'
 import { dataDir } from '../core/store.js'
-import { useTick, downloadText } from './shared.jsx'
+import { useTick, downloadText, toast } from './shared.jsx'
 import { loadAiConfig, saveAiConfig, testConnection, DEFAULT_SYSTEM } from '../ai/llm.js'
 
 const FILENAMES = ['profile.json', 'items.json', 'reviews.json', 'studylog.json', 'exams.json', 'demos.json']
@@ -82,7 +82,7 @@ export default function Settings() {
       subjects,
     })
     notify()
-    window.alert('已保存。' + (form.grade ? '高考日期按年级推算，除非你手动指定。' : ''))
+    toast('已保存。' + (form.grade ? '高考日期按年级推算，除非你手动指定。' : ''))
   }
 
   const backup = async () => {
@@ -111,9 +111,9 @@ export default function Settings() {
       await store.flush()
       notify()
       tick()
-      window.alert('已导入：' + (r.replaced.join('、') || '无匹配文件') + (r.skipped.length > 0 ? '；跳过 ' + r.skipped.join('、') : ''))
+      toast('已导入：' + (r.replaced.join('、') || '无匹配文件') + (r.skipped.length > 0 ? '；跳过 ' + r.skipped.join('、') : ''))
     } catch (err) {
-      window.alert('导入失败：' + String(err && err.message ? err.message : err))
+      toast('导入失败：' + String(err && err.message ? err.message : err))
     }
   }
 

@@ -79,3 +79,21 @@ export function downloadText(filename, text, mime) {
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
+/**
+ * 非阻塞轻提示（替代 window.alert——原生 alert 阻塞主线程，
+ * 会拖住 IndexedDB 写入续体，是数据丢失事故的元凶之一）。
+ * @param {string} msg 文案 @param {string} [kind] bad=红色
+ */
+let toastEl = null
+let toastTimer = 0
+export function toast(msg, kind) {
+  if (toastEl === null || toastEl.isConnected !== true) {
+    toastEl = document.createElement('div')
+    toastEl.className = 'hstToast'
+    document.body.appendChild(toastEl)
+  }
+  toastEl.textContent = msg
+  toastEl.className = 'hstToast show' + (kind === 'bad' ? ' bad' : '')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { if (toastEl !== null) toastEl.className = 'hstToast' }, 2800)
+}
