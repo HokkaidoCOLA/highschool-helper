@@ -169,6 +169,7 @@
       wrap.appendChild(top)
 
       this.elStage = el('div', 'hst_stage')
+      this.elStage.style.width = '100%'
       this.canvas = el('canvas')
       this.elStage.appendChild(this.canvas)
       this.elHint = el('div', 'hst_hint')
@@ -418,10 +419,19 @@
 
     /** 按容器宽度决定画布尺寸。 */
     layout: function () {
-      var width = Math.max(160, this.elStage.clientWidth || this.root.clientWidth || 320)
+      // elStage 没有显式宽度时 clientWidth 为 0，直接 fallback 到 root.clientWidth 会拿到
+      // 「挂载那一刻」的旧宽度——横屏↔竖屏切换后画布停在旧尺寸、横向溢出。
+      // 正确做法：量当前实际可用宽度，取不到再退回 root。
+      var avail = this.elStage.clientWidth || this.elStage.getBoundingClientRect().width || this.root.clientWidth || 320
+      var width = Math.max(160, Math.round(avail))
       var ratio = Number.isFinite(this.viewRatio) ? this.viewRatio : (this.mode === 'panel' ? 0.78 : 0.62)
       var min = this.mode === 'panel' ? 240 : 190
       var max = this.mode === 'panel' ? 520 : 360
+      // 视口高度约束：手机横屏（视口 ~400px 高）时画布不能按宽度比例撑到 500+，
+      // 否则步骤条/说明区被顶出屏幕。innerHeight 合理时把上限压到视口的 72%。
+      var ih = (typeof window !== 'undefined' && window.innerHeight) || 0
+      if (ih > 200) max = Math.min(max, Math.round(ih * 0.72))
+      if (max < min) max = min
       var height = NS.clamp(Math.round(width * ratio), min, max)
       this.painter.resize(width, height)
     },

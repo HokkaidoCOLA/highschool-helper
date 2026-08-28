@@ -167,7 +167,9 @@ textarea.input { resize: vertical; }
 /* 演示 */
 .demoHost { margin: 0 0 4px; }
 .demoHost:empty { display: none; }
-.demoHost.big { min-height: 2px; }
+.demoHost.big { min-height: 2px }
+/* 演示页两列包装：竖屏 display:contents 完全透传（零影响），横屏接管布局 */
+.demoStageCol, .demoListCol { display: contents; }
 .demoGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 9px; }
 .demoCard { font: inherit; text-align: left; background: var(--inset); border: 0; border-radius: 13px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: transform .08s, box-shadow .15s; }
 .demoCard:active { transform: scale(.97); }
@@ -312,15 +314,14 @@ textarea.input { resize: vertical; }
   /* 复习：左演示画布（sticky），右翻卡 */
   .pageReview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 14px; align-items: start; }
   .pageReview > .deckHead { grid-column: 1 / -1; }
-  .pageReview > .demoHost:not(:empty) { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; }
+  .pageReview > .demoHost:not(:empty) { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 96px); overflow-y: auto; overscroll-behavior: contain; }
   .pageReview > .reviewCard { grid-column: 2; }
   .pageReview .doneCard { grid-column: 1 / -1; }
 
   /* 演示：左画布（sticky）右样例列表 */
   .pageDemos { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 0 14px; align-items: start; }
-  .pageDemos > .demoHost:not(:empty) { grid-column: 1; grid-row: 1 / span 8; position: sticky; top: 6px; }
-  .pageDemos > .card { grid-column: 2; }
-  .pageDemos > .demoHost:not(:empty) + .card { grid-column: 1; }
+  .pageDemos > .demoStageCol { display: block; grid-column: 1; position: sticky; top: 6px; max-height: calc(var(--app-h, 100dvh) - 52px); overflow-y: auto; overscroll-behavior: contain; }
+  .pageDemos > .demoListCol { display: block; grid-column: 2; min-width: 0; }
   .demoGrid { grid-template-columns: 1fr 1fr; }
 
   /* 弹层与抽屉 */

@@ -60,6 +60,7 @@ export default function Demos() {
 
   return (
     <div className="pageDemos">
+      <div className="demoStageCol">
       <div ref={stageRef} className="demoHost big" />
       {current !== null ? (
         <div className="card">
@@ -76,7 +77,9 @@ export default function Demos() {
       ) : (
         <p className="hint">从下面任选一份演示，分步时间轴可点芯片、可自动播放；画布可拖拽旋转/缩放（2D 平移），r 复位、方向键切步、空格播放。</p>
       )}
+      </div>
 
+      <div className="demoListCol">
       <div className="card">
         <h3>九种场景类型样例</h3>
         <div className="demoGrid">
@@ -120,6 +123,7 @@ export default function Demos() {
             <button type="button" className="btn danger sm" onClick={() => removeDemo(d.id)}>删</button>
           </div>
         ))}
+      </div>
       </div>
     </div>
   )
