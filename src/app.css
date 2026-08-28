@@ -608,8 +608,10 @@ body::after {
 }
 
 /* ② 高光：--gx/--gy 是引擎每帧写入的光源局部坐标 */
+/* 注意：.drawer 基座是 position:fixed（离屏抽屉，脱流）——绝不能覆盖成 relative，
+   否则会被塞回 chatPage 的 flex 列抢高度（v3 首发的聊天区错位事故）。fixed 自带 ::after 包含块。 */
 .lg-on .appTabs, .lg-on .composer, .lg-on .chatTop, .lg-on .hero,
-.lg-on .chatSide, .lg-on .drawer, .lg-on .modal, .lg-on .demoModal { position: relative; }
+.lg-on .chatSide, .lg-on .modal, .lg-on .demoModal { position: relative; }
 .lg-on .appTabs::after, .lg-on .composer::after, .lg-on .chatTop::after,
 .lg-on .hero::after, .lg-on .chatSide::after, .lg-on .drawer::after,
 .lg-on .modal::after, .lg-on .demoModal::after {
