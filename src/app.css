@@ -390,3 +390,13 @@ textarea.input { resize: vertical; }
 .modalStageWrap { position: relative; flex: 1; min-height: 0; display: flex; }
 .modalStageWrap > .demoModalStage { flex: 1; min-height: 0; }
 .reviewStageWrap { position: relative; min-width: 0; }
+
+/* ── 滚动区隔离：侧栏与主区各自独立，滑动永不互相带动 ─────────────────────
+   overscroll-behavior:contain 掐断「滚到边界/内容不溢出时链式传给外层」的默认行为；
+   chatSide 自身兜底可滚：即便内部高度链异常，也是侧栏自己滚，绝不带动主区。   */
+.chatSide { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.drawerList { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.chatStream { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.drawer { overscroll-behavior: contain; }
+.chatMain { min-width: 0; }
+
