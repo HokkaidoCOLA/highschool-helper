@@ -22,8 +22,12 @@ let openPromise = null
 function open() {
   if (openPromise === null) {
     openPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open('hst-app', 1)
-      req.onupgradeneeded = () => { req.result.createObjectStore('files') }
+      const req = indexedDB.open('hst-app', 2)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files')
+        if (!db.objectStoreNames.contains('conversations')) db.createObjectStore('conversations')
+      }
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
@@ -85,6 +89,54 @@ function delNow(name) {
   return new Promise((resolve, reject) => {
     const tx = conn.transaction('files', 'readwrite')
     tx.objectStore('files').delete(name)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+// ── 会话存储（聊天侧边栏的多会话持久化；库版本 2 新增 conversations store）────
+const memConvs = new Map()
+
+/** 读全部会话。 @returns {Promise<Record<string,string>>} */
+export async function convGetAll() {
+  if (!idbAvailable()) return Object.fromEntries(memConvs)
+  await prime()
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction('conversations', 'readonly')
+    const out = {}
+    tx.objectStore('conversations').openCursor().onsuccess = (ev) => {
+      const cur = ev.target.result
+      if (cur) { out[cur.key] = cur.value; cur.continue() } else resolve(out)
+    }
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+/** 写一个会话（同步派发，语义同 idbSet）。 */
+export function convSet(id, text) {
+  if (!idbAvailable()) { memConvs.set(id, text); return Promise.resolve() }
+  if (conn === null) return open().then((db) => { conn = db; return convPutNow(id, text) })
+  return convPutNow(id, text)
+}
+function convPutNow(id, text) {
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction('conversations', 'readwrite')
+    tx.objectStore('conversations').put(text, id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+  })
+}
+
+/** 删除一个会话。 */
+export function convDel(id) {
+  if (!idbAvailable()) { memConvs.delete(id); return Promise.resolve() }
+  if (conn === null) return open().then((db) => { conn = db; return convDelNow(id) })
+  return convDelNow(id)
+}
+function convDelNow(id) {
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction('conversations', 'readwrite')
+    tx.objectStore('conversations').delete(id)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })

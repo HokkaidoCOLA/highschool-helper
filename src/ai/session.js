@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * 聊天会话（模块级单例）：消息流、模型上下文、在途请求都活在这里，
- * 不随页面组件卸载——切到别的标签页，请求继续在后台跑完（工具照常落库、
- * 排期照常写入），切回来历史与「输入中」状态原样还在。
- * 只有用户显式按「停止」或「新会话」才会中断/清空。
+ * 聊天会话管理（模块级单例）：多会话 + 持久化 + 切页不打断。
+ *
+ * 每个会话（conversation）自带：UI 消息流 items、模型上下文 apiMessages、
+ * 标题、在途状态与 AbortController——A 会话回复中切到 B，A 的请求继续在后台
+ * 跑完并写回 A 自己。会话整体存 IndexedDB（conversations store），重启不丢。
+ *
+ * getSession() 对活跃会话做投影（items/busy），组件用 useSyncExternalStore 订阅。
  */
 import { store, notify } from '../state.js'
 import { runAssistant } from './llm.js'
+import { convGetAll, convSet, convDel } from '../core/idb.js'
 
 let uid = 0
-let apiMessages = []
-let abortCtrl = null
+let convSeq = 0
 const listeners = new Set()
 
 let state = {
-  items: [],          // 界面消息流（user/assistant/tool/demo/deck/file/error/notice）
-  busy: false,        // 有请求在途
-  draftText: '',      // 输入框草稿（切页不丢）
-  draftImages: [],    // 待发送的图片 dataURL
+  convs: [],           // 会话数组，按 updatedAt 倒序
+  activeId: null,
+  items: [],           // 活跃会话投影
+  busy: false,         // 活跃会话投影
+  draftText: '',
+  draftImages: [],
+  loaded: false,
 }
 
 export function getSession() {
@@ -29,78 +35,203 @@ export function subscribeSession(fn) {
   return () => listeners.delete(fn)
 }
 
-function patch(next) {
-  state = { ...state, ...next }
+function emit() {
+  const c = activeConv()
+  state = { ...state, items: c === null ? [] : c.items, busy: c !== null && c.busy === true }
   for (const fn of [...listeners]) {
     try { fn() } catch { /* 订阅者异常不断广播 */ }
   }
 }
 
-/** 往消息流追加一条（自动补 id）。 */
-export function pushItem(it) {
-  patch({ items: state.items.concat([{ id: ++uid, ...it }]) })
+function activeConv() {
+  return state.convs.find((c) => c.id === state.activeId) ?? null
+}
+
+/** 持久化（防抖 500ms；写请求本身同步派发，不怕随后被弹窗阻塞） */
+const saveTimers = new Map()
+function persist(c) {
+  if (c === null || state.loaded !== true) return
+  clearTimeout(saveTimers.get(c.id) ?? 0)
+  saveTimers.set(c.id, setTimeout(() => {
+    const slim = {
+      id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt,
+      items: c.items, apiMessages: c.apiMessages,
+    }
+    convSet(c.id, JSON.stringify(slim)).catch(() => {})
+  }, 500))
+}
+
+function sortByUpdated() {
+  state.convs.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** 启动加载（main.jsx 在渲染前 await）。无历史则建一个新会话。 */
+export async function loadConversations() {
+  const all = await convGetAll()
+  const convs = []
+  for (const raw of Object.values(all)) {
+    try {
+      const c = JSON.parse(raw)
+      if (typeof c !== 'object' || c === null || typeof c.id !== 'string') continue
+      convs.push({
+        id: c.id, title: String(c.title || '新对话'),
+        createdAt: Number(c.createdAt) || Date.now(), updatedAt: Number(c.updatedAt) || Date.now(),
+        items: Array.isArray(c.items) ? c.items : [],
+        apiMessages: Array.isArray(c.apiMessages) ? c.apiMessages : [],
+        busy: false, abort: null,
+      })
+    } catch { /* 坏记录跳过 */ }
+  }
+  convs.sort((a, b) => b.updatedAt - a.updatedAt)
+  state = { ...state, convs, loaded: true }
+  if (convs.length === 0) {
+    newConversation()
+  } else {
+    state = { ...state, activeId: convs[0].id }
+    emit()
+  }
+  return state
+}
+
+/** 新建会话并切过去。 */
+export function newConversation() {
+  convSeq += 1
+  const c = {
+    id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
+    title: '新对话', createdAt: Date.now(), updatedAt: Date.now(),
+    items: [], apiMessages: [], busy: false, abort: null,
+  }
+  state = { ...state, convs: [c, ...state.convs], activeId: c.id }
+  emit()
+  return c
+}
+
+export function switchConversation(id) {
+  if (state.convs.some((c) => c.id === id)) {
+    state = { ...state, activeId: id }
+    emit()
+  }
+}
+
+export function renameConversation(id, title) {
+  const c = state.convs.find((x) => x.id === id)
+  if (c !== undefined && typeof title === 'string') {
+    c.title = title.trim().slice(0, 30) || c.title
+    c.updatedAt = Date.now()
+    sortByUpdated()
+    persist(c)
+    emit()
+  }
+}
+
+/** 删除会话（在途请求先中止）；删掉活跃会话则自动切到下一个或新建。 */
+export function deleteConversation(id) {
+  const idx = state.convs.findIndex((c) => c.id === id)
+  if (idx < 0) return
+  const c = state.convs[idx]
+  if (c.abort !== null) { try { c.abort.abort() } catch { /* 忽略 */ } }
+  state.convs.splice(idx, 1)
+  convDel(id).catch(() => {})
+  if (state.convs.length === 0) {
+    state = { ...state, activeId: null }
+    newConversation()
+    return
+  }
+  if (state.activeId === id) state = { ...state, activeId: state.convs[0].id }
+  emit()
 }
 
 export function setDraftText(v) {
-  patch({ draftText: v })
+  state = { ...state, draftText: v }
+  emit()
 }
 
 export function addDraftImage(url) {
   if (state.draftImages.length >= 4) return
-  patch({ draftImages: state.draftImages.concat([url]) })
+  state = { ...state, draftImages: state.draftImages.concat([url]) }
+  emit()
 }
 
 export function removeDraftImage(i) {
-  patch({ draftImages: state.draftImages.filter((_, j) => j !== i) })
+  state = { ...state, draftImages: state.draftImages.filter((_, j) => j !== i) }
+  emit()
 }
 
-/** 工具完成事件 → 消息流卡片（演示卡/翻卡组/过程行）。 */
-function onToolEvent(ev) {
+/** 往指定会话追加一条消息（工具事件写回发起会话，而非当前活跃会话）。 */
+export function pushItemTo(conv, it) {
+  if (conv === null || conv === undefined) return
+  conv.items = conv.items.concat([{ id: ++uid, ...it }])
+  conv.updatedAt = Date.now()
+  sortByUpdated()
+  persist(conv)
+  emit()
+}
+
+export function pushItem(it) {
+  pushItemTo(activeConv(), it)
+}
+
+function onToolEvent(conv, ev) {
   if (ev.phase !== 'done') return
-  if (ev.ok && ev.meta && ev.meta.kind === 'hst-demo') { pushItem({ kind: 'demo', meta: ev.meta }); return }
-  if (ev.ok && ev.meta && ev.meta.kind === 'hst-deck') { pushItem({ kind: 'deck', cards: ev.meta.items || [] }); return }
-  pushItem({ kind: 'tool', label: ev.label, ok: ev.ok, error: ev.error })
+  if (ev.ok && ev.meta && ev.meta.kind === 'hst-demo') { pushItemTo(conv, { kind: 'demo', meta: ev.meta }); return }
+  if (ev.ok && ev.meta && ev.meta.kind === 'hst-deck') { pushItemTo(conv, { kind: 'deck', cards: ev.meta.items || [] }); return }
+  pushItemTo(conv, { kind: 'tool', label: ev.label, ok: ev.ok, error: ev.error })
 }
 
 /**
- * 发送一条用户消息并驱动整个回合（含多轮工具调用）。
- * 切页不影响执行；返回 promise 仅供需要 await 的调用方（测试）使用。
+ * 在活跃会话发送一条用户消息并驱动整个回合（多轮工具循环）。
+ * 切页/切会话都不影响执行；promise 仅供需要 await 的调用方（测试）。
  */
 export function sendUser(text, images) {
-  if (state.busy) return Promise.resolve()
+  const conv = activeConv()
+  if (conv === null || conv.busy) return Promise.resolve()
   const imgs = images || []
-  pushItem({ kind: 'user', text, images: imgs })
-  patch({ busy: true, draftText: '', draftImages: [] })
-  apiMessages.push({
+  if (conv.title === '新对话' && text.trim() !== '') conv.title = text.trim().slice(0, 18)
+  conv.busy = true
+  pushItemTo(conv, { kind: 'user', text, images: imgs })
+  state = { ...state, draftText: '', draftImages: [] }
+  conv.apiMessages.push({
     role: 'user',
     content: imgs.length > 0
       ? [{ type: 'text', text: text || '请识别这张图片里的题目并讲解。' }].concat(imgs.map((url) => ({ type: 'image_url', image_url: { url } })))
       : text,
   })
-  abortCtrl = new AbortController()
-  return runAssistant(apiMessages, onToolEvent, abortCtrl.signal).then(
+  const ctrl = new AbortController()
+  conv.abort = ctrl
+  emit()
+  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal).then(
     (final) => {
-      if (final) pushItem({ kind: 'assistant', text: final })
+      if (final) pushItemTo(conv, { kind: 'assistant', text: final })
       notify()
     },
     (err) => {
-      pushItem({ kind: 'error', text: String(err && err.message ? err.message : err) })
+      pushItemTo(conv, { kind: 'error', text: String(err && err.message ? err.message : err) })
       notify()
     },
   ).finally(() => {
-    abortCtrl = null
-    patch({ busy: false })
+    conv.busy = false
+    conv.abort = null
+    persist(conv)
+    emit()
   })
 }
 
-/** 显式停止在途请求（界面上的 ■）。 */
+/** 停止活跃会话的在途请求。 */
 export function stopUser() {
-  if (abortCtrl !== null) abortCtrl.abort()
+  const conv = activeConv()
+  if (conv !== null && conv.abort !== null) { try { conv.abort.abort() } catch { /* 忽略 */ } }
 }
 
-/** 新会话：清空消息流与模型上下文（在途请求先停止）。 */
+/** 清空活跃会话的消息与上下文（会话本身保留）。 */
 export function clearSession() {
+  const conv = activeConv()
+  if (conv === null) return
   stopUser()
-  apiMessages = []
-  patch({ items: [], draftText: '', draftImages: [] })
+  conv.items = []
+  conv.apiMessages = []
+  conv.title = '新对话'
+  conv.updatedAt = Date.now()
+  state = { ...state, draftText: '', draftImages: [] }
+  persist(conv)
+  emit()
 }

@@ -9,13 +9,14 @@
 import React from 'react'
 import { store } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
-import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem } from '../ai/session.js'
+import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation } from '../ai/session.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
 import { subjectLabel } from '../core/subjects.js'
 import { showScene, hideStage } from '../engine/boot.js'
 import { GradeButtons } from './shared.jsx'
-import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot } from './icons.jsx'
+import ConvDrawer from './ConvDrawer.jsx'
+import { IconCamera, IconImage, IconClip, IconSend, IconStop, IconRobot, IconMenu, IconPlus, IconPen, IconTrash } from './icons.jsx'
 
 const SUGGESTS = ['讲讲导数的几何意义，画个图', '抽查我 5 道物理', '这道题我又错了（拍照）', '帮我制定本周复习计划']
 
@@ -129,6 +130,7 @@ function FileCard({ f }) {
 export default function Chat({ goSettings }) {
   const s = useSession()
   const [modal, setModal] = React.useState(null)
+  const [drawer, setDrawer] = React.useState(false)
   const bottomRef = React.useRef(null)
   const camRef = React.useRef(null)
   const galleryRef = React.useRef(null)
@@ -177,12 +179,11 @@ export default function Chat({ goSettings }) {
           <button type="button" className="btn primary" onClick={goSettings}>去设置</button>
         </div>
       ) : null}
-      {s.items.length > 0 ? (
-        <div className="chatBar">
-          <span className="hint grow">{s.busy ? '回复在后台继续，切页不打断' : '共 ' + s.items.filter((i) => i.kind === 'user' || i.kind === 'assistant').length + ' 条对话'}</span>
-          <button type="button" className="btn sm" onClick={clearSession}>新会话</button>
-        </div>
-      ) : null}
+      <div className="chatTop">
+        <button type="button" className="iconBtn flat" title="历史对话" onClick={() => setDrawer(true)}><IconMenu /></button>
+        <div className="chatTopTitle">{(s.convs.find((c) => c.id === s.activeId) || { title: '新对话' }).title}</div>
+        <button type="button" className="iconBtn flat" title="新对话" onClick={newConversation}><IconPlus /></button>
+      </div>
       <div className="chatStream">
         {s.items.length === 0 ? (
           <div className="chatEmpty">
@@ -245,6 +246,17 @@ export default function Chat({ goSettings }) {
           ? <button type="button" className="iconBtn stop" onClick={stopUser} title="停止"><IconStop /></button>
           : <button type="button" className="iconBtn send" onClick={send} title="发送"><IconSend /></button>}
       </div>
+      {drawer ? <div className="scrim" onClick={() => setDrawer(false)} /> : null}
+      <ConvDrawer
+        open={drawer}
+        convs={s.convs}
+        activeId={s.activeId}
+        onClose={() => setDrawer(false)}
+        onNew={newConversation}
+        onSwitch={switchConversation}
+        onRename={renameConversation}
+        onDelete={deleteConversation}
+      />
       {modal !== null ? <DemoModal meta={modal} onClose={() => setModal(null)} /> : null}
     </div>
   )

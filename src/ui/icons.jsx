@@ -34,3 +34,7 @@ export const IconTarget = (p) => <Svg {...p}><circle cx="12" cy="12" r="9" /><ci
 export const IconLayers = (p) => <Svg {...p}><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></Svg>
 export const IconRobot = (p) => <Svg {...p}><rect x="4.5" y="8" width="15" height="11" rx="3" /><path d="M12 8V4.5M9 4.5h6" /><circle cx="9.2" cy="13" r="1.1" fill="currentColor" strokeWidth="0" /><circle cx="14.8" cy="13" r="1.1" fill="currentColor" strokeWidth="0" /><path d="M9.5 16.5h5" /><path d="M2 12v3M22 12v3" /></Svg>
 export const IconChevron = (p) => <Svg {...p} strokeWidth="2"><path d="M9 5l7 7-7 7" /></Svg>
+export const IconMenu = (p) => <Svg {...p}><path d="M4 6.5h16M4 12h16M4 17.5h16" /></Svg>
+export const IconPlus = (p) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
+export const IconPen = (p) => <Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></Svg>
+export const IconTrash = (p) => <Svg {...p}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></Svg>

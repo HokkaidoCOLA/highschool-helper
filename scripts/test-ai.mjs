@@ -81,6 +81,7 @@ ok('端点错误有可读提示', errText.includes('404'), errText)
 
 // ── 会话层：一轮对话不依赖任何 UI 也能完整跑完（= 切页不打断的本质）──
 const session = await import('../src/ai/session.js')
+await session.loadConversations()
 const srv2 = http.createServer((req, res) => {
   let body = ''
   req.on('data', (c) => { body += c })
@@ -108,6 +109,30 @@ ok('工具真实落库（会话层贯通 store）', store.db().items.some((i) =>
 session.clearSession()
 ok('新会话清空消息流', session.getSession().items.length === 0)
 srv2.close()
+
+// ── 多会话管理（侧边栏的数据层）──
+const idA = session.getSession().activeId
+session.newConversation()
+const st1 = session.getSession()
+ok('新建后会话数 +1 且切换活跃', st1.convs.length === 2 && st1.activeId !== idA)
+session.pushItem({ kind: 'notice', text: 'B 会话的消息' })
+session.switchConversation(idA)
+ok('切换后消息流互相独立', session.getSession().items.every((i) => i.text !== 'B 会话的消息'))
+session.switchConversation(st1.activeId)
+ok('切回 B 消息还在', session.getSession().items.some((i) => i.text === 'B 会话的消息'))
+session.renameConversation(idA, '我的错题讲解')
+ok('重命名生效', session.getSession().convs.find((c) => c.id === idA).title === '我的错题讲解')
+// 持久化往返：等 persist 防抖落地后模拟重启
+await new Promise((r) => setTimeout(r, 700))
+await session.loadConversations()
+const after = session.getSession()
+ok('重启后两个会话都在', after.convs.length === 2)
+ok('重启后标题/消息保留', after.convs.some((c) => c.title === '我的错题讲解') && after.convs.some((c) => c.items.some((i) => i.text === 'B 会话的消息')))
+session.deleteConversation(idA)
+ok('删除后剩一个且自动切换', session.getSession().convs.length === 1 && session.getSession().activeId !== idA)
+session.deleteConversation(session.getSession().convs[0].id)
+ok('删光后自动新建空会话', session.getSession().convs.length === 1 && session.getSession().items.length === 0)
+
 bad.close()
 server.close()
 
