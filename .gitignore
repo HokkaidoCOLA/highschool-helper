@@ -9,3 +9,5 @@ ios/
 
 scripts/env.sh
 *.apk
+# 真机调试截图
+.preview/
