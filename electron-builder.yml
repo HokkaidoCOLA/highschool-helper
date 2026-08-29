@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# 高中助学 · Windows 桌面版打包（electron-builder）
+#
+# 交叉构建：macOS/Linux 上即可产出 Windows x64 安装包——
+# exe 资源改写走纯 JS resedit（无需 wine），NSIS 由 app-builder 自带 darwin 二进制。
+# 国内网络需镜像（GitHub 直连被拦时）：
+#   ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+#   ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+appId: dev.hst.highschooltutor.desktop
+productName: 高中助学
+copyright: Copyright © 2025 · GPL-3.0-or-later
+
+directories:
+  output: win-dist
+  buildResources: electron/build
+
+# 打进 asar 的全部内容：桌面壳 + web 产物（与 APK/PWA 同一份 dist/）
+# 排除 node_modules：web 层已被 vite 预打包进 dist/，主进程只用 Node/Electron 内建
+files:
+  - electron/main.cjs
+  - electron/preload.cjs
+  - dist/**
+  - package.json
+  - LICENSE
+  - "!**/node_modules/**"
+
+asar: true
+
+win:
+  target:
+    - nsis
+    - portable
+  icon: electron/build/icon.ico
+  artifactName: highschool-tutor-v${version}-win-${arch}-portable.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 高中助学
+  artifactName: highschool-tutor-v${version}-win-${arch}-setup.${ext}
+
+portable:
+  artifactName: highschool-tutor-v${version}-win-${arch}-portable.${ext}
+
+# 只保留中文+英文语言包，砍体积
+electronLanguages:
+  - zh-CN
+  - en-US

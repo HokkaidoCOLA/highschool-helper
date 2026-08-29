@@ -10,7 +10,7 @@
  */
 import { store, notify } from '../state.js'
 import { runAssistant } from './llm.js'
-import { SUBJECT_PROMPTS } from './prompts.js'
+import { SUBJECT_PROMPTS } from '../core/prompts.js'
 import { convGetAll, convSet, convDel } from '../core/idb.js'
 
 let uid = 0
@@ -52,8 +52,12 @@ function activeConv() {
 const saveTimers = new Map()
 function persist(c) {
   if (c === null || state.loaded !== true) return
+  // 已删除的会话不回写：删除在途会话时，abort 触发的收尾 pushItemTo 会带着
+  // 旧引用回到这里——不拦住就会把刚 convDel 掉的记录重新写进 IDB（重启复活）。
+  if (!state.convs.some((x) => x.id === c.id)) return
   clearTimeout(saveTimers.get(c.id) ?? 0)
   saveTimers.set(c.id, setTimeout(() => {
+    if (!state.convs.some((x) => x.id === c.id)) { saveTimers.delete(c.id); return } // 防抖窗口内被删也要复查
     const slim = {
       id: c.id, title: c.title, subject: c.subject, createdAt: c.createdAt, updatedAt: c.updatedAt,
       items: c.items, apiMessages: c.apiMessages,
@@ -218,7 +222,10 @@ export function sendUser(text, images) {
       notify()
     },
     (err) => {
-      pushItemTo(conv, { kind: 'error', text: String(err && err.message ? err.message : err) })
+      // 用户点「停止」→ fetch 半途 abort 抛的是 DOMException（AbortError: signal is aborted…），
+      // 不该以红色错误气泡示人，按正常「已停止」处理
+      if (ctrl.signal.aborted) pushItemTo(conv, { kind: 'notice', text: '已停止' })
+      else pushItemTo(conv, { kind: 'error', text: String(err && err.message ? err.message : err) })
       notify()
     },
   ).finally(() => {

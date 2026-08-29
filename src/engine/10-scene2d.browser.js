@@ -178,7 +178,8 @@
         } else {
           pts = [[v.xMin, (-c - o.a * v.xMin) / o.b], [v.xMax, (-c - o.a * v.xMax) / o.b]]
         }
-      } else if (o.x1 !== undefined) {
+      } else if (o.x1 !== undefined && o.x2 !== undefined && o.y1 !== undefined && o.y2 !== undefined) {
+        // 两点式必须四个坐标齐全：缺任何一个都会 NaN 传播、整条线静默消失
         if (Math.abs(o.x2 - o.x1) < 1e-9) pts = [[o.x1, v.yMin], [o.x1, v.yMax]]
         else {
           var k = (o.y2 - o.y1) / (o.x2 - o.x1)
@@ -593,7 +594,8 @@
       var y1 = o.y1 !== undefined ? o.y1 : p.view.yMin + 2
       var x2 = o.x2 !== undefined ? o.x2 : p.view.xMax - 2
       var y2 = o.y2 !== undefined ? o.y2 : p.view.yMax - 2
-      var step = o.d !== undefined ? o.d : 8
+      var step = o.d !== undefined ? Math.abs(o.d) : 8
+      if (!(step >= 0.05)) step = 8 // d=0/过小/非法 → 双重循环永不推进（主线程卡死）
       var sym = o.kind || o.shape || 'into'
       for (var x = x1; x <= x2 + 1e-6; x += step) {
         for (var y = y1; y <= y2 + 1e-6; y += step) {

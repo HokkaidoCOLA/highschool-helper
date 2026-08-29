@@ -4,10 +4,21 @@ dist/
 .DS_Store
 android/
 ios/
+win-dist/
+.npm-cache/
+.cache/
 
 .test-ui-bundle.mjs
 
 scripts/env.sh
 *.apk
+*.exe
 # 真机调试截图
 .preview/
+# puppeteer-core 下载的 chrome-headless-shell（repro-*.mjs 用，勿入库）
+.browser/
+
+# Electron dev 运行时锁文件（electron . 在工作目录产生）
+SingletonCookie
+SingletonLock
+SingletonSocket

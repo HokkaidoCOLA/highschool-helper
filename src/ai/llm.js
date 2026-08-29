@@ -8,12 +8,12 @@
  *
  * 工具实现直接复用移植自插件的 createTools(store)：模型是大脑，题库/排期/演示
  * 全在本地执行——插件里 14 个工具的宿主从 DSH 换成了 App。
- * system 提示词按「基座 + 学科层 + 情境层」拼装（见 prompts.js），每轮重建，
+ * system 提示词按「基座 + 学科层 + 情境层」拼装（见 core/prompts.js），每轮重建，
  * 会话中途切换学科立即生效。
  */
 import { store } from '../state.js'
 import { createTools } from '../core/tools.js'
-import { BASE, buildSystemPrompt } from './prompts.js'
+import { BASE, buildSystemPrompt } from '../core/prompts.js'
 
 const CFG_KEY = 'hst.ai.config'
 
@@ -109,7 +109,12 @@ export async function runAssistant(apiMessages, onEvent, signal, opts) {
     const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : []
     if (calls.length === 0) return String(msg.content || '')
     rounds += 1
-    if (rounds > MAX_TOOL_ROUNDS) return String(msg.content || '（工具调用达到轮数上限，先停在这里）')
+    if (rounds > MAX_TOOL_ROUNDS) {
+      // 悬空的 tool_calls 会毒化会话：assistant 消息必须逐条配 tool 响应，
+      // 否则下一轮请求整体被 OpenAI 兼容端点 400 拒绝，这个会话永久坏掉。
+      for (const call of calls) apiMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ ok: false, error: '已达本轮工具调用上限，请继续用文字回答' }) })
+      return String(msg.content || '（工具调用达到轮数上限，先停在这里）')
+    }
     for (const call of calls) {
       const name = call.function && call.function.name
       const def = byName.get(name)
@@ -151,6 +156,7 @@ export function toolLabel(name, args) {
     case 'tutor_visualize': return '绘制动态演示：' + String((a.scene && a.scene.title) || '').slice(0, 24)
     case 'tutor_scene_guide': return '查场景规范' + (a.kind ? '（' + a.kind + '）' : '')
     case 'tutor_paper_import': return '解析电子资料'
+    case 'tutor_teaching_guide': return '查讲解规范' + (a.subject ? '（' + a.subject + '）' : '')
     default: return name || '工具'
   }
 }

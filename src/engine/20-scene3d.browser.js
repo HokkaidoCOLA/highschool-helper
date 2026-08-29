@@ -215,9 +215,16 @@
       if (!dup) uniq.push(pts[j])
     }
     if (uniq.length < 3) return []
-    // 在平面内建立正交基，按极角排序
+    // 在平面内建立正交基，按极角排序。基向量必须挑「离质心最远的交点」：
+    // 截面过顶点时首个交点可能恰是质心（重合点），零向量会让 atan2 排序整体退化。
     var c = v3.centroid(uniq)
-    var u = v3.norm(v3.sub(uniq[0], c))
+    var u = null
+    var best = 0
+    for (var bi = 0; bi < uniq.length; bi += 1) {
+      var bl = v3.len(v3.sub(uniq[bi], c))
+      if (bl > best) { best = bl; u = v3.norm(v3.sub(uniq[bi], c)) }
+    }
+    if (u === null || !(best > 1e-9)) return uniq // 全点重合的退化截面：按原序返回
     var w = v3.norm(v3.cross(nrm, u))
     uniq.sort(function (p, q) {
       var ap = Math.atan2(v3.dot(v3.sub(p, c), w), v3.dot(v3.sub(p, c), u))
@@ -337,12 +344,17 @@
 
       // 面：按质心深度入队，背面可选剔除
       if (!wire) {
+        // 内置几何体的面缠绕并非全按「外向法向」约定（cube 底面、prism/pyramid/cone/sphere
+        // 实测整体内向，仅 tetra 全对）：facing 判定不能信缠绕——凸体一律用
+        // 「面心 − 体心」把法向动态转正，hollow 剔除与正/背面明暗从此对所有几何体正确。
+        var bodyC = v3.centroid(verts)
         for (var i = 0; i < g.faces.length; i += 1) {
           var f = g.faces[i]
           var pts = []
           for (var j = 0; j < f.length; j += 1) pts.push(verts[f[j]])
           var c = v3.centroid(pts)
           var nrm = v3.cross(v3.sub(pts[1], pts[0]), v3.sub(pts[2], pts[0]))
+          if (v3.dot(nrm, v3.sub(c, bodyC)) < 0) nrm = v3.mul(nrm, -1)
           var rc = v3.rotate(c, st.cam)
           var rn = v3.rotate(nrm, st.cam)
           var facing = rn[2] > 0
@@ -594,7 +606,11 @@
       return [[0, 1, 0], [Math.cos(rad(-30)), Math.sin(rad(-30)), 0], [Math.cos(rad(210)), Math.sin(rad(210)), 0]]
     }
     if (g === 'trigonal-pyramidal' || g === 'pyramidal' || g === '三角锥形' || g === '三角锥') {
-      return [[t, -t, t], [t, -t, -t], [-t * 1.41, -t, 0]]
+      // 对称三脚架：三键绕 −y 均分（两两夹角 ≈107°，NH₃ 实测值），第 4 支留给孤对电子
+      // ——molecule 渲染器按 dirs[ligands.length+L] 消费孤对方向，缺第 4 支 NH₃ 的孤对永远画不出来。
+      var c2 = 0.372
+      var s2 = Math.sqrt(1 - c2 * c2)
+      return [[s2, -c2, 0], [-s2 / 2, -c2, (s2 * Math.sqrt(3)) / 2], [-s2 / 2, -c2, -(s2 * Math.sqrt(3)) / 2], [0, 1, 0]]
     }
     if (g === 'tetrahedral' || g === '正四面体' || g === '四面体') {
       return [[t, t, t], [t, -t, -t], [-t, t, -t], [-t, -t, t]]
@@ -1017,6 +1033,60 @@
 
   // ══ globe3d ══════════════════════════════════════════════════════════════
 
+  /**
+   * 地球光照框架几何：由 globe 参数导出半径、阳光方向与经纬→世界坐标映射。
+   * globe 本体与依赖它的 point/arc/sunray/terminator 共用同一实现，避免两处漂移。
+   * 地轴 n=(sin δ, cos δ, 0)，阳光沿 +x 射来 ⇒ 直射点纬度恰为 δ。
+   * @param {object} o globe 对象（用 r、declination）。
+   * @returns {{r: number, decDeg: number, sun: number[], axis: number[], at: Function}} 框架。
+   */
+  function globeGeom(o) {
+    var r = o.r !== undefined ? o.r : 1.15
+    var decDeg = o.declination !== undefined ? o.declination : 23.5
+    var dec = rad(decDeg)
+    var axis = [Math.sin(dec), Math.cos(dec), 0]
+    var sun = [1, 0, 0]
+    var east = v3.norm(v3.cross(axis, [0, 0, 1]))
+    if (v3.len(east) < 1e-6) east = [1, 0, 0]
+    var third = v3.norm(v3.cross(axis, east))
+    /**
+     * 经纬度 → 世界坐标。
+     * @param {number} latDeg 纬度。
+     * @param {number} lonDeg 经度（0 为正对太阳的经线）。
+     * @returns {number[]} 世界坐标点。
+     */
+    var at = function (latDeg, lonDeg) {
+      var la = rad(latDeg)
+      var lo = rad(lonDeg)
+      var dir = v3.add(
+        v3.mul(axis, Math.sin(la)),
+        v3.add(v3.mul(east, Math.cos(la) * Math.cos(lo)), v3.mul(third, Math.cos(la) * Math.sin(lo))),
+      )
+      return v3.mul(v3.norm(dir), r)
+    }
+    return { r: r, decDeg: decDeg, sun: sun, axis: axis, at: at }
+  }
+
+  /**
+   * 补写 globe 派生状态。模型把 point/arc 写在 globe **之前**很常见（对象顺序不该有语义），
+   * 那时 globe 尚未写入 st._globeAt 等——先就地从场景里的 globe 初始化（幂等，不产生绘制副作用）。
+   * @param {object} st 渲染状态。
+   * @param {object} scene 场景。
+   */
+  function ensureGlobeState(st, scene) {
+    if (st._globeAt !== undefined) return
+    var objs = (scene && scene.objects) || []
+    for (var i = 0; i < objs.length; i += 1) {
+      if (objs[i].type !== 'globe') continue
+      var gf = globeGeom(objs[i])
+      st._globeAt = gf.at
+      st._globeR = gf.r
+      st._globeSun = gf.sun
+      st._globeDec = gf.decDeg
+      return
+    }
+  }
+
   /** 地球光照对象绘制表。 */
   var GLOBE = {
     /**
@@ -1025,35 +1095,15 @@
      */
     globe: function (q, p, pr, o, st) {
       var pal = NS.palette()
-      var r = o.r !== undefined ? o.r : 1.15
-      var dec = rad(o.declination !== undefined ? o.declination : 23.5)
-      // 地轴：n=(sin δ, cos δ, 0)，阳光沿 +x 射来 ⇒ 直射点纬度恰为 δ
-      var axis = [Math.sin(dec), Math.cos(dec), 0]
-      var sun = [1, 0, 0]
-      var east = v3.norm(v3.cross(axis, [0, 0, 1]))
-      if (v3.len(east) < 1e-6) east = [1, 0, 0]
-      var north = axis
-      var third = v3.norm(v3.cross(north, east))
-
-      /**
-       * 经纬度 → 世界坐标。
-       * @param {number} latDeg 纬度。
-       * @param {number} lonDeg 经度（0 为正对太阳的经线）。
-       * @returns {number[]} 世界坐标点。
-       */
-      var at = function (latDeg, lonDeg) {
-        var la = rad(latDeg)
-        var lo = rad(lonDeg)
-        var dir = v3.add(
-          v3.mul(north, Math.sin(la)),
-          v3.add(v3.mul(east, Math.cos(la) * Math.cos(lo)), v3.mul(third, Math.cos(la) * Math.sin(lo))),
-        )
-        return v3.mul(v3.norm(dir), r)
-      }
+      var gf = globeGeom(o)
+      var r = gf.r
+      var sun = gf.sun
+      var axis = gf.axis
+      var at = gf.at
       st._globeAt = at
       st._globeR = r
       st._globeSun = sun
-      st._globeDec = o.declination !== undefined ? o.declination : 23.5
+      st._globeDec = gf.decDeg
 
       // 球面网格着色：每个小四边形按是否受光取昼/夜色。
       // 密度取 14×28：背面的一半会被剔除，实际约 200 个四边形，
@@ -1162,7 +1212,8 @@
     },
 
     /** 平行光（太阳光线）。 */
-    sunray: function (q, p, pr, o, st) {
+    sunray: function (q, p, pr, o, st, scene) {
+      ensureGlobeState(st, scene) // 排在 globe 之前也要拿到真实半径
       var pal = NS.palette()
       var r = st._globeR || 1.15
       var n = o.n !== undefined ? o.n : 5
@@ -1188,7 +1239,8 @@
     },
 
     /** 地表某点（可自动算正午太阳高度）。 */
-    point: function (q, p, pr, o, st) {
+    point: function (q, p, pr, o, st, scene) {
+      ensureGlobeState(st, scene)
       var pal = NS.palette()
       var at = st._globeAt
       if (!at) return
@@ -1211,7 +1263,8 @@
     },
 
     /** 球面上的一段弧（如某条经线的昼弧）。 */
-    arc: function (q, p, pr, o, st) {
+    arc: function (q, p, pr, o, st, scene) {
+      ensureGlobeState(st, scene)
       var at = st._globeAt
       if (!at) return
       var s = styleOf(o, st, { color: NS.palette().good, width: 2.2 })
@@ -1237,7 +1290,8 @@
     },
 
     /** 显式画晨昏线（globe 里默认已画，这里用于单独强调）。 */
-    terminator: function (q, p, pr, o, st) {
+    terminator: function (q, p, pr, o, st, scene) {
+      ensureGlobeState(st, scene)
       var r = st._globeR || 1.15
       var s = styleOf(o, st, { color: '#f5c542', width: 2.6 })
       var prev = null

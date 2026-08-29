@@ -3,7 +3,8 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "高中三年学习与巩固助手（Android PWA）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎由 dsh-highschool-tutor 插件机械移植（scripts/sync-from-plugin.mjs），GPL-3.0-or-later。",
+  "main": "electron/main.cjs",
+  "description": "高中三年学习与巩固助手（Android APK / Windows 桌面 / PWA 三端同源）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎由 dsh-highschool-tutor 插件机械移植（scripts/sync-from-plugin.mjs），GPL-3.0-or-later。",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +12,11 @@
     "sync": "node scripts/sync-from-plugin.mjs",
     "icons": "node scripts/gen-icons.mjs",
     "test": "node scripts/test-core.mjs && node scripts/test-ai.mjs && node scripts/test-ui.mjs",
-    "apk": "bash scripts/build-apk.sh"
+    "apk": "bash scripts/build-apk.sh",
+    "ico": "node scripts/gen-ico.mjs",
+    "desktop": "electron .",
+    "smoke": "HST_SMOKE=1 electron .",
+    "win": "bash scripts/build-win.sh"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -23,6 +28,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "puppeteer-core": "^25.9.0",
     "vite": "^5.4.11"
   }

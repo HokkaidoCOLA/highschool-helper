@@ -1,4 +1,4 @@
-# 高中助学 · Android App（PWA）
+# 高中助学 · Android / Windows App（PWA）
 
 > 与 DSH 插件 [dsh-highschool-tutor](https://github.com/HokkaidoCOLA/dsh-highschool-tutor) **同等功能**的手机应用：
 > 错题本 + 艾宾浩斯间隔复习、知识卡片库、电子试卷/课件导入（切题 + 答案回填）、
@@ -15,8 +15,8 @@
 ```bash
 npm install
 npm run dev       # 开发（http://localhost:5173）
-npm test          # 核心回归 23 项 + AI 工具循环端到端 11 项 + UI 冒烟 13 项
-npm run build     # 产物在 dist/（gzip 后约 140 KB）
+npm test          # 核心回归 26 项 + AI 工具循环端到端 31 项 + UI 冒烟 13 项
+npm run build     # 产物在 dist/（gzip 后约 180 KB）
 npm run preview   # 本地起静态服务体验构建产物
 ```
 
@@ -43,6 +43,37 @@ npm run apk       # scripts/build-apk.sh：build → cap add android → assembl
 安装到手机：把 APK 传到手机点开安装（允许「安装未知来源应用」），或 USB 调试下 `adb install -r highschool-tutor-debug.apk`。
 debug 包用调试密钥签名——分发给他人的正式版需自建 release keystore 并 `assembleRelease`。
 
+### 出 Windows 安装包（Electron）
+
+```bash
+npm run win       # scripts/build-win.sh：build → gen-ico → electron-builder --win --x64
+                  # macOS/Linux 上即可交叉产出，无需 Windows 机器或 wine
+```
+
+产物在 `win-dist/`：**NSIS 安装包**（`highschool-tutor-vX.Y.Z-win-x64-setup.exe`，
+安装后开始菜单/桌面快捷方式）与**便携版 exe**（免安装双击即用），未签名（首次运行
+Windows 会弹 SmartScreen——「仍要运行」即可；分发量大再考虑购买代码签名证书）。
+
+桌面壳与 APK 同一哲学：**web 层零改动**，差异全部由 `electron/` 壳补齐——
+
+| 能力 | Android（Capacitor） | Windows（Electron 壳） |
+|---|---|---|
+| 绕 CORS 请求 AI 端点 | CapacitorHttp 原生代理 | preload 把 http(s) `fetch` 透明转发到主进程 `net.fetch`（带中止） |
+| 资源加载 | WebView 读 assets | 特权 `app://hst/` 协议直读 asar 内 `dist/`（IndexedDB/localStorage 落稳定安全源） |
+| 数据位置 | App 私有目录 | `%APPDATA%\高中助学\`（卸载重装不清库） |
+| 离线 | WebView 内置 | 资源随安装包整分发（桌面禁用 service worker） |
+| 桌面习惯 | — | 中文原生菜单、输入框右键菜单、Ctrl+±= 缩放、F11 全屏、外链走系统浏览器 |
+
+```bash
+npm run desktop   # 在本机（macOS/Linux/Windows）直接跑桌面壳调试
+npm run smoke     # 无头冒烟：验证 渲染 / fetch 桥 / IndexedDB / 网络代理 四件套
+npm run ico       # 重新生成 electron/build/icon.ico（矢量配方与 PWA 图标同源）
+```
+
+国内网络（GitHub 直连不通）时依赖 Electron 二进制镜像，`.npmrc` 已配好
+`electron_mirror=npmmirror`；electron-builder 的 NSIS/winCodeSign 工具链需
+`ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
+
 ## AI 接入
 
 `设置 → AI 接入` 填三项（任意 OpenAI 兼容服务）：
@@ -51,7 +82,7 @@ debug 包用调试密钥签名——分发给他人的正式版需自建 release
 - **API Key**：只存本机 localStorage，不进备份、不外传；
 - **模型名**：需支持 function calling；**拍照讲题需视觉能力**（gpt-4o、qwen-vl、glm-4v 一类）。
 
-「测试连接」一键自检。App 端复刻了插件的 14 个工具协议（`src/core/tools.js` 由同步脚本
+「测试连接」一键自检。App 端复刻了插件的 15 个工具协议（`src/core/tools.js` 由同步脚本
 从插件仓库移植），模型每调一次工具都**真实落在本机 Store**：录题排期、翻卡评分、
 可视化讲题卡——插件里工具宿主是 DSH，这里换成了 App 自己的 IndexedDB。
 
@@ -89,14 +120,16 @@ APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；�
 ## 目录
 
 ```
-src/core/       移植自插件的核心逻辑（同步脚本管理，含 tools.js 14 个工具）+ idb.js / bytes.js
+src/core/       移植自插件的核心逻辑（同步脚本管理，含 tools.js 15 个工具）+ idb.js / bytes.js
 src/ai/         llm.js —— OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止
 src/engine/     演示引擎四件套（复制）+ boot.js（共享 Player 装载、键盘守卫、主题变量）
 src/ui/         七页：今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置
 src/state.js    store 单例 + 数据变更总线
 public/         manifest / sw.js / 图标（scripts/gen-icons.mjs 纯 node 生成）
-scripts/        sync · test-core · test-ui · gen-icons · build-apk · fixtures
+scripts/        sync · test-core · test-ui · gen-icons · gen-ico · build-apk · fixtures
 capacitor.config.json   Android 壳配置（webDir: dist）
+electron/       Windows/桌面壳：main.cjs（app:// 协议 + net.fetch 代理 + 原生菜单）· preload.cjs（fetch 桥）
+electron-builder.yml    Windows 打包配置（nsis + portable）
 ```
 
 ## 已知边界

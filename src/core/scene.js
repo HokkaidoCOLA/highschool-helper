@@ -236,10 +236,14 @@ function normalizeObject(raw, kind, seq, warnings) {
   // 坐标类字段（几乎所有 2D 对象都会用到一部分）
   take('x', 'y', 'z', 'x1', 'y1', 'z1', 'x2', 'y2', 'z2', 'cx', 'cy', 'cz',
     'r', 'a', 'b', 'c', 'k', 'w', 'h', 'd', 'from', 'to', 'at', 'angle', 'rotate',
-    'mass', 'value', 'samples', 'scale', 'lat', 'lon', 'declination', 'n')
+    'mag', 'value', 'samples', 'scale', 'lat', 'lon', 'declination', 'n',
+    'labelAt', 'persp')
   takeStr('expr', 'exprX', 'exprY', 'expr2', 'of', 'target', 'anchor', 'shape', 'unit',
     'element', 'center', 'ligand', 'geometry', 'kind', 'preset', 'orient', 'axis', 'dir')
-  takeBool('close', 'extend', 'fillArea', 'dashed', 'arrow', 'both', 'open', 'wire', 'hollow', 'bold', 'q')
+  takeBool('close', 'extend', 'fillArea', 'dashed', 'arrow', 'both', 'open', 'wire', 'hollow', 'bold', 'q', 'animate')
+  // mass 允许符号名（「m」「2kg」）也允许数值：引擎只把它拼进标注文字（10-scene2d:473）
+  if (typeof raw.mass === 'number' && Number.isFinite(raw.mass)) out.mass = raw.mass
+  else if (raw.mass !== null && raw.mass !== undefined && String(raw.mass).trim() !== '') out.mass = str(raw.mass, 24)
 
   if (Array.isArray(raw.points)) out.points = points(raw.points, /3$|3d$/.test(type) || kind.endsWith('3d') ? 3 : 2)
   if (Array.isArray(raw.data)) out.data = points(raw.data, 2)

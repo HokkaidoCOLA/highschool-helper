@@ -9,7 +9,7 @@ import { SUBJECTS, subjectLabel } from '../core/subjects.js'
 import { parseImport, toMarkdown } from '../core/importer.js'
 import { seedItems } from '../core/seed.js'
 import { mastery } from '../core/srs.js'
-import { Chip, downloadText, useTick } from './shared.jsx'
+import { Chip, downloadText, toast, useTick } from './shared.jsx'
 
 const EMPTY = { subject: 'math', kind: 'card', topic: '', question: '', answer: '', explanation: '', tags: '', difficulty: 3, source: '', chapter: '', grade: '' }
 

@@ -61,7 +61,7 @@ ok('最终文本透传', final === '图与题都进库了，去复习页抽查�
 ok('事件流 4 条（两工具 run+done）', events.length === 4 && events[1].phase === 'done' && events[3].phase === 'done')
 ok('工具摘要中文化', events[0].label.includes('录入题库') && events[2].label.includes('动态演示'))
 ok('第二轮请求携带 tool 角色回灌', requests[1].messages.some((m) => m.role === 'tool'))
-ok('携带 OpenAI tools schema', Array.isArray(requests[0].tools) && requests[0].tools.length === 14 && requests[0].tools[0].function.name === 'tutor_dashboard')
+ok('携带 OpenAI tools schema', Array.isArray(requests[0].tools) && requests[0].tools.length === 15 && requests[0].tools[0].function.name === 'tutor_dashboard')
 const demoEvent = events.find((e) => e.phase === 'done' && e.meta && e.meta.kind === 'hst-demo')
 ok('visualize 的 presentationMeta 投影完整', Boolean(demoEvent) && demoEvent.ok && demoEvent.meta.scene && Array.isArray(demoEvent.meta.keySteps), demoEvent ? String(demoEvent.error || 'meta缺') : '无demo事件')
 const items = store.db().items
@@ -135,6 +135,21 @@ session.deleteConversation(idA)
 ok('删除后剩一个且自动切换', session.getSession().convs.length === 1 && session.getSession().activeId !== idA)
 session.deleteConversation(session.getSession().convs[0].id)
 ok('删光后自动新建空会话', session.getSession().convs.length === 1 && session.getSession().items.length === 0)
+
+// ── 删除在途会话不得复活（persist 必须跳过已从列表移除的会话）──
+const slow = http.createServer(() => { /* 永不回包：制造在途请求 */ })
+await new Promise((r) => slow.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + slow.address().port + '/v1', model: 'stub', apiKey: 'x' })
+session.newConversation()
+const doomed = session.getSession().activeId
+const inflightDoomed = session.sendUser('在途会话删除测试', [])
+session.deleteConversation(doomed)          // 请求在途时删除
+session.stopUser()                           // 中止 → 错误收尾回调触发 persist
+await inflightDoomed
+await new Promise((r) => setTimeout(r, 800)) // 越过 persist 的 500ms 防抖
+const revived = await (await import('../src/core/idb.js')).convGetAll()
+ok('在途会话删除后不落盘复活', revived[doomed] === undefined, Object.keys(revived).join(','))
+slow.close()
 
 // ── 学科层：锁定学科后 system 注入学科方法论；auto 注入声明指令 ──
 const seen = []

@@ -44,6 +44,7 @@ import { KIND_LABELS, SCENE_KINDS, keySteps, normalizeScene, objectTypesOf, scen
 import { exampleList, exampleOf, fieldDocsOf } from './examples.js'
 import { FORMAT_LABELS, extractText } from './docs.js'
 import { parseStudyText } from './paper.js'
+import { QUICK_REFERENCE, SUBJECT_PROMPTS, teachingGuide } from './prompts.js'
 
 /** 学科枚举（工具参数用）。 */
 const SUBJECT_ENUM = [...SUBJECT_KEYS]
@@ -881,6 +882,44 @@ export function createTools(store) {
             'label 支持 x^2 / v_0 写法，会自动渲染成 x²、v₀',
             '不确定坐标就先按示例的量级填，用户可以拖动和缩放',
           ],
+        }
+      },
+    }),
+
+    // ── 15. 分科讲解规范 ────────────────────────────────────────────────────
+    jsonTool({
+      name: 'tutor_teaching_guide',
+      description: '取某一科的完整讲解规范：讲题顺序、哪些题型必须出图（及用哪种场景类型）、错题登记时 tags/answer/explanation 的写法要求。开始讲该科的题目之前先调一次，比临场回忆更稳定；判不出学科时传 auto，返回「先声明学科」的六科一行速查。\n\n不传 subject 时一次返回六科全套规范（适合制定讲题策略，或用户问「你各科怎么讲」）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          subject: { type: 'string', enum: ['auto', ...SUBJECT_ENUM], description: '学科；auto = 未锁定学科时的通用规范；省略 = 返回六科全部' },
+        },
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const want = args.subject === undefined || args.subject === null ? null : String(args.subject)
+        if (want === null) {
+          return {
+            summary: `六科讲解规范全套（${SUBJECT_KEYS.map((k) => subjectLabel(k)).join(' / ')}）`,
+            all: Object.fromEntries(SUBJECT_KEYS.map((k) => [k, SUBJECT_PROMPTS[k]])),
+            quickReference: QUICK_REFERENCE,
+          }
+        }
+        const guide = teachingGuide(want)
+        if (guide.subject === 'auto') {
+          return {
+            summary: '按 auto 规范返回：先判断题目所属学科，并在回答第一句用「〔学科〕」声明',
+            subject: 'auto',
+            text: guide.text,
+            hint: want !== 'auto' ? `「${want}」不是有效学科键，请用 ${SUBJECT_KEYS.join('/')} 之一或 auto` : undefined,
+            available: SUBJECT_KEYS,
+          }
+        }
+        return {
+          summary: `${subjectLabel(guide.subject)}讲解规范：讲题顺序 + 必画图的题型 + 错题登记要求`,
+          subject: guide.subject,
+          text: guide.text,
         }
       },
     }),

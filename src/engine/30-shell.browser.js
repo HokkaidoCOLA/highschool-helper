@@ -331,6 +331,10 @@
       this.index = -1
       this.playing = false
       this.t = 0
+      // 换场景前必须清掉上一份场景留下的步进定时器与 rAF：Player 全 App 单例，
+      // 不清就会拿旧回调驱动新场景（播放中切卡 → 自动翻页停不下来 / 后台空转 60fps）
+      this.stopTimer()
+      if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0 }
       this.pan = { x: 0, y: 0, zoom: 1 }
       this.cam = this.handler && this.handler.is3d
         ? Object.assign({}, this.handler.defaultCam)

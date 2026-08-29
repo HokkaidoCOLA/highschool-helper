@@ -7,7 +7,7 @@
  *   · tutor_visualize → 演示卡（点开全屏分步演示）；tutor_review_deck → 内联翻卡组
  */
 import React from 'react'
-import { store } from '../state.js'
+import { store, notify } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
 import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject } from '../ai/session.js'
 import { extractText } from '../core/docs.js'
@@ -74,6 +74,7 @@ function DeckInline({ cards }) {
   const grade = (g) => {
     if (!item) return
     store.review([{ id: item.id, grade: g, elapsedMs: 0 }])
+    notify() // 复习流水变了：今日页计数/统计随之刷新（翻卡发生在回合结束后，不能等 finally 的 notify）
     let nq = queue
     if (g === 'again' && !againSeen.current.has(item.id)) { againSeen.current.add(item.id); nq = queue.concat([item]) }
     const next = idx + 1

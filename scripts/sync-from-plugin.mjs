@@ -2,11 +2,15 @@
 /**
  * sync-from-plugin.mjs —— 把插件仓库（dsh-highschool-tutor）的核心代码移植进 App。
  *
- * 纯逻辑模块（srs/subjects/syllabus/seed/importer/paper/scene/examples/showcase）与
+ * 纯逻辑模块（srs/subjects/syllabus/seed/importer/paper/scene/examples/showcase/prompts）与
  * canvas 演示引擎（frame/*.browser.js，本就是浏览器脚本）字节级原样复制；store/zipfs/docs
  * 含 Node 专用写法（node:fs、Buffer、zlib），用正则锚点机械改写（tools.js 亦然：文件路径分支
  * 改为引导走资料页上传）。锚点没命中就抛错——
  * 防止插件侧重构后悄悄同步出半旧代码。UI、engine/boot.js、idb/bytes 等应用侧代码不在范围。
+ *
+ * prompts.js 是「分科讲解规范」的单一来源：App 端用 buildSystemPrompt（整段 system，带身份
+ * 与话题边界），插件端另有 coachSection（注册进宿主 prompt 的短段落）——App 只用前者，
+ * 多出来的导出无害，故整文件原样复制、不 fork 副本。
  *
  * 用法：node scripts/sync-from-plugin.mjs [插件仓库路径]（默认 ../dsh-highschool-tutor）
  */
@@ -18,7 +22,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
 const PLUGIN = resolve(process.argv[2] ?? join(dirname(ROOT), 'dsh-highschool-tutor'))
 
-const VERBATIM_CORE = ['srs.js', 'subjects.js', 'syllabus.js', 'seed.js', 'importer.js', 'paper.js', 'scene.js', 'examples.js', 'showcase.js']
+const VERBATIM_CORE = ['srs.js', 'subjects.js', 'syllabus.js', 'seed.js', 'importer.js', 'paper.js', 'scene.js', 'examples.js', 'showcase.js', 'prompts.js']
 const VERBATIM_ENGINE = ['00-core.browser.js', '10-scene2d.browser.js', '20-scene3d.browser.js', '30-shell.browser.js']
 
 mkdirSync(join(ROOT, 'src/core'), { recursive: true })
