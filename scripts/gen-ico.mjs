@@ -19,7 +19,7 @@ const CRC_TABLE = (() => {
   const t = new Int32Array(256)
   for (let n = 0; n < 256; n += 1) {
     let c = n
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 8
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
     t[n] = c
   }
   return t
@@ -34,7 +34,7 @@ function chunk(type, data) {
   len.writeUInt32BE(data.length)
   const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
   const crc = Buffer.alloc(4)
-  crc.writeUInt32LE(crc32(body))
+  crc.writeUInt32BE(crc32(body)) // PNG 规定 CRC 按大端存（此前误写 LE，CoreGraphics 严格校验会拒读）
   return Buffer.concat([len, body, crc])
 }
 /** 逐像素回调着色 → RGBA PNG（与 gen-icons.mjs 同一编码器）。 */

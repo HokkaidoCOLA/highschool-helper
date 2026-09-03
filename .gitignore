@@ -13,6 +13,7 @@ win-dist/
 scripts/env.sh
 *.apk
 *.exe
+*.pptx
 # 真机调试截图
 .preview/
 # puppeteer-core 下载的 chrome-headless-shell（repro-*.mjs 用，勿入库）

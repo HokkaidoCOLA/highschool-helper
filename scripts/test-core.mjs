@@ -139,13 +139,26 @@ ok('scene \u89c4\u8303\u5316\uff08geom3d \u793a\u4f8b\uff09', () => {
   assert.equal(norm.warnings.length, 0)
   assert.ok(norm.scene.objects.length > 0)
 })
-// 回归护栏：normalizeObject 字段白名单曾丢掉 force/velocity 的 mag（力箭头全画成同一长度）
-// 与字符串 mass（物块质量标注消失）。引擎读取见 10-scene2d.browser.js 的 o.mag / o.mass。
-ok('scene \u4fdd\u7559 mag/mass\uff08\u529b\u5b66\u5b57\u6bb5\u767d\u540d\u5355\uff09', () => {
+// 回归护栏：normalizeObject 字段白名单曾丢掉 force/velocity 的 mag（力箭头全画成同一长度）、
+// 字符串 mass 与 label（物块标注消失）。引擎读取见 10-scene2d.browser.js 的 o.mag / o.mass / o.label。
+// 力学示例本身只保证 mag；mass/label 的白名单用合成对象直接测，避免与示例数据强耦合。
+ok('scene \u4fdd\u7559 mag/mass/label\uff08\u529b\u5b66\u5b57\u6bb5\u767d\u540d\u5355\uff09', () => {
   const byId = Object.fromEntries(normalizeScene(EXAMPLES.mech2d).scene.objects.map((o) => [o.id, o]))
   assert.equal(byId.G.mag, 17)
   assert.equal(byId.G2.mag, 14.7)
-  assert.equal(byId.block.mass, 'm')
+  assert.equal(byId.block.label, 'm') // 示例滑块用 label 标质量符号（mass:'m' 会被引擎渲染成 "m=m"）
+  const synth = normalizeScene({
+    kind: 'mech2d',
+    objects: [
+      { id: 'b1', type: 'body', x: 1, y: 1, mass: '2kg' },
+      { id: 'b2', type: 'body', x: 2, y: 1, mass: 5 },
+      { id: 'v1', type: 'velocity', x: 1, y: 1, mag: 8 },
+    ],
+  }).scene
+  const s = Object.fromEntries(synth.objects.map((o) => [o.id, o]))
+  assert.equal(s.b1.mass, '2kg')
+  assert.equal(s.b2.mass, 5)
+  assert.equal(s.v1.mag, 8)
 })
 
 

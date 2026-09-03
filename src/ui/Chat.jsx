@@ -132,7 +132,11 @@ function FileCard({ f }) {
   )
 }
 
-const LAND_MQ = '(orientation: landscape) and (max-height: 560px)'
+// 常驻侧栏资格 = 横屏（与 app.css 里 .chatSide 的媒体查询同口径）。
+// 旧值带 max-height:560px 只命中手机横屏，桌面/平板横屏（820px 高）反被
+// 判为竖屏 → 挂 .off 把 CSS 已备好的常驻侧栏藏死。汉堡键语义随之统一：
+// 横屏=折叠/展开侧栏，竖屏=覆盖抽屉。
+const LAND_MQ = '(orientation: landscape)'
 
 export default function Chat({ goSettings }) {
   const s = useSession()

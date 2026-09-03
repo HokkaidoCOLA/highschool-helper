@@ -841,3 +841,63 @@ body::before, body::after { opacity: var(--gv-blob); }
 .slider b { flex: none; width: 74px; font-weight: 600; }
 .slider input[type="range"] { flex: 1; min-width: 0; accent-color: var(--brand); height: 30px; }
 .slider i { flex: none; width: 44px; text-align: right; font-style: normal; font-variant-numeric: tabular-nums; color: var(--fg2); font-size: 12px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   桌面 / 大屏增强（Electron Windows / 大屏平板 · 2026-08）
+   触发面：宽度 ≥900 且高度 ≥561——手机（含横屏 max-height:560 那套
+   紧凑布局）全部落在范围外，Android / 小屏 PWA 零影响。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 单列页限宽居中：窗口窄于限宽时无感，天然向后兼容 */
+.appMain:not(.fullBleed) > * { max-width: 860px; margin-inline: auto; }
+/* 聊天消息列收束：气泡/工具行不再横跨全窗（max() 小屏取原 13px 边距） */
+.chatStream { padding-inline: max(13px, calc(50% - 430px)); }
+
+@media (min-width: 900px) and (min-height: 561px) {
+  /* 只放宽非聊天页内边距；聊天 fullBleed 保持 0（覆盖基础规则会破坏全出血语义） */
+  .appMain:not(.fullBleed) { padding: 18px 32px 40px; }
+
+  /* 底部胶囊 Dock 收宽居中（静态流与 lg-on 悬浮两种模式都要管住） */
+  .appTabs { max-width: 780px; margin-inline: auto; }
+  .lg-on .appTabs { left: 50%; right: auto; transform: translateX(-50%); width: min(780px, calc(100% - 24px)); }
+
+  /* 今日：hero + 行动按钮通栏，其余卡片两列 */
+  .pageToday { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }
+  .pageToday > .hero, .pageToday > .primaryBlock { grid-column: 1 / -1; }
+  .appMain:not(.fullBleed) > .pageToday { max-width: 900px; }
+
+  /* 复习：左演示画布（sticky 分屏）+ 右翻卡——与手机横屏同构，尺寸放宽 */
+  .pageReview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 22px; align-items: start; }
+  .pageReview > .deckHead { grid-column: 1 / -1; }
+  .pageReview > .reviewStageWrap { grid-column: 1; grid-row: 2 / span 4; position: sticky; top: 10px; max-height: calc(var(--app-h, 100dvh) - 130px); display: flex; flex-direction: column; }
+  .pageReview .demoHost:has(> #hst-root) { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .pageReview > .reviewCard { grid-column: 2; }
+  .pageReview .doneCard { grid-column: 1 / -1; }
+  .appMain:not(.fullBleed) > .pageReview { max-width: 1220px; }
+
+  /* 演示：左画布（sticky）+ 右样例列表两列 */
+  .pageDemos { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 0 22px; align-items: start; }
+  .pageDemos > .stageColWrap { display: flex; flex-direction: column; grid-column: 1; position: sticky; top: 10px; max-height: calc(var(--app-h, 100dvh) - 120px); }
+  .pageDemos .demoStageCol { display: block; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .pageDemos > .demoListCol { display: block; grid-column: 2; min-width: 0; }
+  .demoGrid { grid-template-columns: 1fr 1fr; }
+  .appMain:not(.fullBleed) > .pageDemos { max-width: 1220px; }
+}
+
+/* ── 鼠标环境专属：hover 补偿态 + 隐藏触屏假滚动条（原生条已有样式）──
+   手机 hover:none / coarse pointer，整块自然失效，零副作用。 */
+@media (hover: hover) and (pointer: fine) {
+  .vbarTrack { display: none; }
+
+  .btn:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+  .primaryBlock:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 9px 26px rgba(91, 124, 250, .48); }
+  .chipBtn:hover .chip { background: var(--inset); transform: scale(1.04); }
+  .gradeBtn:hover { background: var(--inset); transform: translateY(-1px); }
+  .demoCard:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .chapterRow:hover { background: var(--inset); }
+  .suggest:hover { background: var(--inset); transform: translateY(-1px); }
+  .iconBtn:hover { background: var(--line); transform: translateY(-1px); }
+  .convItem:hover { background: var(--inset); }
+  .appTab:not(.on):hover { background: var(--inset); color: var(--fg); }
+  .heroRow .btn:hover { transform: translateY(-1px) scale(1.02); }
+}

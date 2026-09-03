@@ -70,6 +70,23 @@ npm run smoke     # 无头冒烟：验证 渲染 / fetch 桥 / IndexedDB / 网�
 npm run ico       # 重新生成 electron/build/icon.ico（矢量配方与 PWA 图标同源）
 ```
 
+### 桌面端 UI 适配（宽屏布局 + 鼠标反馈，同样惠及大屏平板 PWA）
+
+`src/app.css` 末尾「桌面 / 大屏增强」块 + `Chat.jsx` 侧栏资格修正，触发条件
+`min-width:900px`（布局）与 `hover:hover + pointer:fine`（鼠标态），手机（含横屏
+紧凑布局）与竖屏平板零影响：
+
+- **限宽居中**：单列页内容 ≤860px；聊天消息列 ≤860px；底部胶囊 Dock 收宽 ≤780px 居中；
+- **双栏网格**：今日（hero 通栏 + 卡片两列）、复习（左演示画布 sticky + 右翻卡）、
+  演示（左画布 + 右样例列表）——与手机横屏那套同构，尺寸放宽；
+- **聊天侧栏常驻**：修正 `LAND_MQ` 只认手机横屏的旧口径，桌面横屏「历史对话」侧栏
+  默认展开、汉堡键折叠（CSS 媒体查询早已备好，是 JS 门没放行）；
+- **鼠标反馈**：按钮/评分块/演示卡/章节行/会话项等全套 hover 态（借力现有 transition）；
+- **双滚动条治理**：鼠标环境隐藏触屏专用的 VBar 假滚动条，原生细条接管。
+
+验收：`npm run verify-desktop`（需先 `npx vite preview --port 4317`）——
+1240×820 桌面 19 项断言 + 手机横/竖屏回归，截图落 `.preview/desktop/`。
+
 国内网络（GitHub 直连不通）时依赖 Electron 二进制镜像，`.npmrc` 已配好
 `electron_mirror=npmmirror`；electron-builder 的 NSIS/winCodeSign 工具链需
 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
