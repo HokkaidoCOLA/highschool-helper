@@ -1,5 +1,47 @@
 # Release
 
+## v0.2.0（2026-09-06）· 双环四库全量（M1–M4）
+
+### B 环 · 探索环（对话即采集）
+- 消息行「🌱 探索」分叉会话（apiMessages 净口径截断 + tool_calls 配对守卫，分叉上下文可续聊不毒化）；
+  探索会话「❄ 这轮完了」冻结归档：一次独立 LLM 调用压出**四件套**（结论/卡点回放/推理链/未探索分支）
+  + 弱点被动采集（严格 JSON，解析失败降级只存 transcript、解冻可重试）
+- 「🌱 再开一轮」第二代探索：四件套注入 system（不重放 transcript），档案即继承；
+  历史对话侧栏平铺列表 → fan 树（缩进 + 连线，冻结只读带 ❄）
+- 翻案链：第二代证明第一代误报 → dismiss{overturn} 判 invalid 带证据（resolution.kind=overturn）
+
+### A 环 · 任务环（goal 驱动闭环）
+- 新「任务」页签：拍题→goal→计划→交产出→评分→补习→「确定完成」定稿总结卡入复习库，全环走通；
+  定稿权在用户（D4）：finish 工具带 confirmedByUser 协议护栏，AI 不能代批
+
+### 弱点注册表（两环唯一汇点）
+- 状态机 discovered→verifying→remedying→mastered|invalid + 验证闸门：抽查=按节点出 1 道诊断题、
+  文字作答、判案回传（confirmed 进补习队列 / false_positive 判 invalid）
+- 「今日」页补习队列（置信度降序 +「这不相关」驳回按钮）；【补习焦点】同源注入 system——
+  只注过闸门的，有活跃任务时按任务节点交集过滤；A 做错 + B 卡壳双源命中同 node 置信升
+- H1–H4 数据采集就位：weaknessStats（invalid 率/驳回率/翻案数），两周自测口径见研究区 06 篇 §6
+
+### 工程
+- store 六表 → 九表（+weaknesses/explorations/tasks，均个人状态数据只存本机·进 E7 导出，不碰冻结中的 HSP 协议）；
+  工具 15 → 18（+tutor_weakness/tutor_task/tutor_explore）；新 prompt 全部进 prompts.js 单一来源
+- DSH 插件退役处置：删 npm sync 入口、同步脚本改退役提示、用户可见文案自述来源（PLAN §3）
+- 测试 77 → 165 项（test-core 58 / test-ai 83 / test-ui 24）；srs.js 调度常量与 spec/ 零改动
+- 构建环境注：本机 Android 工具链装于 `.cache/`（Temurin JDK 17 + cmdline-tools + platform 34，
+  清华/Google 直连），不进仓库
+
+### 产物
+- `highschool-tutor-v0.2.0-win-x64-setup.exe` / `highschool-tutor-v0.2.0-win-x64-portable.exe`（win-dist/，
+  未签名：SmartScreen 选「仍要运行」；数据目录 %APPDATA%\高中助学\，覆盖安装不清库）
+- Android：`highschool-tutor-v0.2.0-release.apk`（正式签名 hst-release.keystore，
+  versionCode 3 / versionName 0.2.0，证书 SHA-256 与 v0.1.0 一致 → 覆盖升级不断档）+
+  `highschool-tutor-v0.2.0-debug.apk`（同能，调试用）
+- 发布前冒烟：`npm run smoke` 五断言全绿（rendered/bridge/patched/idb/proxy）
+- SHA-256（仓库根目录四件）：
+  - win setup `c0bf50af44945ea52a168ffaef240ccf4a027507d39e1540182746afcd23dd12`
+  - win portable `c37653796984541a94be9253ef219b7041a5e78f8f176eb346784a026a2478fe`
+  - apk release `776836a78933897302afb798c13c5b93387a86379bd095ccefc2f8f87accadce`
+  - apk debug `df1d2f5d76714025fb57b0d17ef091611ae383bf0d3a5af2f43700075c05d0a8`
+
 ## v0.1.1（2025-08-29）
 
 ### 桌面端 UI 适配（宽屏布局 + 鼠标反馈；Windows 重打包后生效，大屏平板 PWA 同样受益）

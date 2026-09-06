@@ -23,3 +23,5 @@ scripts/env.sh
 SingletonCookie
 SingletonLock
 SingletonSocket
+# 构建工具链包（下载物，一律不入库）
+*.zip
