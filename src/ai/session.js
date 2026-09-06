@@ -68,6 +68,7 @@ function persist(c) {
       gen: Number.isFinite(c.gen) ? Math.trunc(c.gen) : 0,
       frozen: c.frozen === true,
       fromExploration: typeof c.fromExploration === 'string' ? c.fromExploration : null,
+      exploreTerm: typeof c.exploreTerm === 'object' && c.exploreTerm !== null && typeof c.exploreTerm.term === 'string' && c.exploreTerm.term !== ''     ? { term: String(c.exploreTerm.term).slice(0, 40), quote: String(c.exploreTerm.quote || '').slice(0, 300), msgId: c.exploreTerm.msgId ?? null }     : null,
       items: c.items, apiMessages: c.apiMessages,
     }
     convSet(c.id, JSON.stringify(slim)).catch(() => {})
@@ -96,6 +97,9 @@ export async function loadConversations() {
         gen: Number.isFinite(c.gen) ? Math.max(0, Math.trunc(c.gen)) : 0,
         frozen: c.frozen === true,
         fromExploration: typeof c.fromExploration === 'string' ? c.fromExploration : null,
+        exploreTerm: typeof c.exploreTerm === 'object' && c.exploreTerm !== null && typeof c.exploreTerm.term === 'string' && c.exploreTerm.term !== ''
+        ? { term: String(c.exploreTerm.term).slice(0, 40), quote: String(c.exploreTerm.quote || '').slice(0, 300), msgId: c.exploreTerm.msgId ?? null }
+        : null,
         items: Array.isArray(c.items) ? c.items : [],
         apiMessages: Array.isArray(c.apiMessages) ? c.apiMessages : [],
         busy: false, abort: null,
@@ -120,7 +124,7 @@ export function newConversation() {
     id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
     title: '新对话', createdAt: Date.now(), updatedAt: Date.now(),
     items: [], apiMessages: [], subject: 'auto', busy: false, abort: null,
-    kind: 'chat', parentId: null, forkFrom: null, gen: 0, frozen: false, fromExploration: null,
+    kind: 'chat', parentId: null, forkFrom: null, gen: 0, frozen: false, fromExploration: null, exploreTerm: null,
   }
   state = { ...state, convs: [c, ...state.convs], activeId: c.id }
   emit()
@@ -159,9 +163,11 @@ function trimToPairedContext(msgs) {
  * pushItemTo 记录的 apiLen（老记录没有就向前找最近的；再没有则空上下文，只留转写）。
  * @param {string} convId 母会话 id
  * @param {number|string} itemId 母会话中的消息 id
+ * @param {object} [anchor] { term, quote }——词条级探索（v0.2.1，参考 Explore 的
+ *   「点不懂的词→开子卡片」）：给锚点时会话以词条为题、只围绕该词；不给则整条消息兜底。
  * @returns {object|null} 新会话；分叉点不存在时 null
  */
-export function forkConversation(convId, itemId) {
+export function forkConversation(convId, itemId, anchor) {
   const parent = state.convs.find((x) => x.id === convId)
   if (parent === undefined || parent === null) return null
   const idx = parent.items.findIndex((it) => it.id === itemId)
@@ -178,14 +184,17 @@ export function forkConversation(convId, itemId) {
   apiLen = Math.min(Math.max(0, Math.trunc(apiLen)), net.length)
   convSeq += 1
   const siblings = state.convs.filter((x) => x.parentId === parent.id).length
+  const term = anchor !== null && typeof anchor === 'object' && typeof anchor.term === 'string' && anchor.term.trim() !== ''
+    ? anchor.term.trim().slice(0, 40) : null
   const c = {
     id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
-    title: String(parent.title || '新对话').slice(0, 14) + ' · 探索 ' + (siblings + 1),
+    title: term !== null ? term : String(parent.title || '新对话').slice(0, 14) + ' · 探索 ' + (siblings + 1),
     createdAt: Date.now(), updatedAt: Date.now(),
     subject: parent.subject,
     kind: 'exploration', parentId: parent.id,
     forkFrom: { itemId, index: idx }, gen: (Number.isFinite(parent.gen) ? parent.gen : 0) + 1,
     frozen: false,
+    exploreTerm: term === null ? null : { term, quote: String(anchor.quote || '').slice(0, 300), msgId: itemId },
     items: parent.items.slice(0, idx + 1).map((it) => ({ ...it })),
     apiMessages: trimToPairedContext(net.slice(0, apiLen)),
     busy: false, abort: null,
@@ -232,6 +241,7 @@ export function resumeFromExploration(parentConvId, explorationId) {
     forkFrom: { explorationId, fromArchive: true },
     gen: (Number.isFinite(parent.gen) ? parent.gen : 0) + 1,
     frozen: false, fromExploration: explorationId,
+    exploreTerm: parent.exploreTerm !== null && typeof parent.exploreTerm === 'object' ? { ...parent.exploreTerm } : null,
     items: [{ id: ++uid, kind: 'notice', apiLen: 0, text: '🌱 第二代探索：从档案 ' + explorationId + ' 继承（四件套注入 system，不重放上一轮对话）。' }],
     apiMessages: [],
     busy: false, abort: null,
@@ -381,7 +391,7 @@ export function sendUser(text, images) {
   const ctrl = new AbortController()
   conv.abort = ctrl
   emit()
-  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal, { subject: conv.subject, archive: archiveView(conv) }).then(
+  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal, { subject: conv.subject, archive: archiveView(conv), term: conv.exploreTerm || null }).then(
     (final) => {
       if (final) pushItemTo(conv, { kind: 'assistant', text: final })
       notify()

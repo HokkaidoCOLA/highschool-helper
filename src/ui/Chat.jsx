@@ -10,7 +10,7 @@ import React from 'react'
 import { store, notify } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
 import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject, forkConversation, resumeFromExploration } from '../ai/session.js'
-import { freezeExploration } from '../ai/explore.js'
+import { freezeExploration, lookupTerm, startTermExploration } from '../ai/explore.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
 import { subjectLabel, SUBJECTS } from '../core/subjects.js'
@@ -193,6 +193,58 @@ export default function Chat({ goSettings }) {
 
   // 活跃会话（头部按钮按 kind/frozen 状态出；未加载完时 null）
   const active = s.convs.find((c) => c.id === s.activeId) || null
+  // —— 词条级探索（v0.2.1 · Explore 式两段交互）——
+  // 选区里是 .msg[data-mid] 内 ≤40 字的文本 → 浮出「🌱 探索」→ 速查卡 → 「深入探索」才开锚定子会话
+  const [sel, setSel] = React.useState(null)
+  const [lookup, setLookup] = React.useState(null)
+  const selTimer = React.useRef(0)
+  React.useEffect(() => {
+    const capture = () => {
+      clearTimeout(selTimer.current)
+      selTimer.current = setTimeout(() => {
+        const r = window.getSelection ? window.getSelection() : null
+        if (r === null || r.isCollapsed || r.rangeCount === 0) { setSel(null); return }
+        const text = String(r.toString()).trim()
+        if (text === '' || text.length > 40) { setSel(null); return }
+        const node = r.anchorNode
+        const el = node === null ? null : (node.nodeType === 3 ? node.parentElement : node)
+        const msgEl = el !== null && el.closest !== undefined ? el.closest('.msg[data-mid]') : null
+        const rect = r.getRangeAt(0).getBoundingClientRect()
+        if (msgEl === null || rect.width === 0 && rect.height === 0) { setSel(null); return }
+        const full = msgEl.textContent || ''
+        const at = full.indexOf(text)
+        const quote = at >= 0 ? full.slice(Math.max(0, at - 60), Math.min(full.length, at + text.length + 80)) : text
+        setSel({ term: text.slice(0, 40), quote, msgId: Number(msgEl.dataset.mid), top: Math.max(56, rect.top - 42), left: Math.min((window.innerWidth || 360) - 150, Math.max(8, rect.left)) })
+      }, 140)
+    }
+    const hide = () => { setSel(null); setLookup(null) }
+    document.addEventListener('selectionchange', capture)
+    window.addEventListener('scroll', hide, true)
+    return () => {
+      document.removeEventListener('selectionchange', capture)
+      window.removeEventListener('scroll', hide, true)
+      clearTimeout(selTimer.current)
+    }
+  }, [])
+  const openLookup = async () => {
+    const card = { ...sel, state: 'loading', text: '' }
+    setLookup(card)
+    setSel(null)
+    try {
+      const text = await lookupTerm(card.term, card.quote)
+      setLookup((cur) => (cur !== null && cur.term === card.term && cur.state === 'loading' ? { ...cur, state: 'done', text } : cur))
+    } catch (err) {
+      setLookup((cur) => (cur !== null && cur.term === card.term && cur.state === 'loading' ? { ...cur, state: 'error', text: String(err && err.message ? err.message : err) } : cur))
+    }
+  }
+  const dive = () => {
+    if (lookup === null) return
+    const term = lookup.term; const quote = lookup.quote; const msgId = lookup.msgId
+    setLookup(null)
+    if (startTermExploration(s.activeId, msgId, term, quote) === null) {
+      pushItem({ kind: 'notice', text: '开不了词条探索（消息可能已被删除）' })
+    }
+  }
   // 🌱 从某条消息分叉探索（B 环入口）：成功后自动切到新会话
   const forkFrom = (itemId) => {
     if (forkConversation(s.activeId, itemId) === null) pushItem({ kind: 'notice', text: '这条消息没法分叉（可能已被删除）' })
@@ -266,14 +318,14 @@ export default function Chat({ goSettings }) {
         ) : null}
         {s.items.map((it) => {
           if (it.kind === 'user') return (
-            <div className="msg user" key={it.id}>
+            <div className="msg user" key={it.id} data-mid={it.id}>
               {it.images && it.images.length > 0 ? <div className="msgImgs">{it.images.map((u, i) => <img key={i} src={u} alt="" />)}</div> : null}
               {it.text ? <div className="msgBody">{it.text}</div> : null}
               <button type="button" className="forkBtn" title="从这条分叉一条探索（B 环）" onClick={() => forkFrom(it.id)}>🌱 探索</button>
             </div>
           )
           if (it.kind === 'assistant') return (
-            <div className="msg assistant" key={it.id}>
+            <div className="msg assistant" key={it.id} data-mid={it.id}>
               <div className="msgBody">{it.text}</div>
               <button type="button" className="forkBtn" title="从这条分叉一条探索（B 环）" onClick={() => forkFrom(it.id)}>🌱 探索</button>
             </div>
@@ -334,6 +386,26 @@ export default function Chat({ goSettings }) {
         onResume={resumeConv}
       />
       {modal !== null ? <DemoModal meta={modal} onClose={() => setModal(null)} /> : null}
+      {sel !== null && lookup === null ? (
+        <button type="button" className="selExplore" style={{ top: sel.top, left: sel.left }} onClick={openLookup}>
+          🌱 探索「{sel.term.length > 10 ? sel.term.slice(0, 10) + '…' : sel.term}」
+        </button>
+      ) : null}
+      {lookup !== null ? (
+        <div className="lookupCard" style={{ top: lookup.top + 46, left: lookup.left }}>
+          <div className="row">
+            <b className="grow">{lookup.term}</b>
+            <button type="button" className="iconBtn xs" onClick={() => setLookup(null)}>✕</button>
+          </div>
+          {lookup.state === 'loading' ? <p className="hint">速查中……一句话讲清它在讲什么；看完还想透就「深入探索」。</p>
+            : lookup.state === 'error' ? <p className="warn">{lookup.text}</p>
+            : <p className="lookupText">{lookup.text}</p>}
+          <div className="row">
+            <button type="button" className="btn sm primary" onClick={dive}>🌱 深入探索</button>
+            <button type="button" className="btn sm" onClick={() => setLookup(null)}>收起</button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

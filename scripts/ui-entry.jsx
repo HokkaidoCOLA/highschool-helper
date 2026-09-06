@@ -61,6 +61,12 @@ session.pushItem({ kind: 'user', text: '这条能分叉吗' })
 session.pushItem({ kind: 'assistant', text: '可以' })
 const mItems = session.getSession().items
 const eConv = session.forkConversation(mConv.id, mItems[1].id)
+// v0.2.1：词条锚定子会话（划词「深入探索」的数据形态）
+session.switchConversation(mConv.id)
+const tc1 = session.forkConversation(mConv.id, mItems[0].id, { term: '单调性', quote: '令 f′=0 求驻点，判断 f 的单调性' })
+session.addWeakness === undefined && 0
+store.addWeakness({ subject: 'math', node: '单调性', quote: '令 f′=0 求驻点，判断 f 的单调性', src: 'conv:' + mConv.id + '#msg:' + mItems[0].id, source: 'explore', confidence: 0.5 })
+if (tc1 === null) { console.error('term fork seed failed'); process.exit(1) }
 
 const checks = [
   ['今日页', <Today goReview={() => {}} />, '距高考'],
@@ -81,6 +87,7 @@ const checks = [
   ['会话抽屉·↪ 前缀', <ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} />, '↪'],
   ['今日页·补习队列', <Today goReview={() => {}} />, '补习队列'],
   ['今日页·这不相关按钮', <Today goReview={() => {}} />, '这不相关'],
+  ['会话抽屉·词条探索标题（v0.2.1）', <ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} onResume={() => {}} />, '单调性'],
   ['任务页·定稿按钮', <Tasks />, '确定完成'],
   ['任务页·计划与 gap', <Tasks />, '过一遍链式法则'],
   ['App 外壳·任务页签', <App />, '高中助学'],
@@ -94,6 +101,7 @@ for (const [label, node, needle] of checks) {
   }
 }
 // 冻结后：头部换成徽标 + 「🌱 再开一轮」（frozen 只读语义的渲染面）
+session.switchConversation(eConv.id)
 session.freezeConversation(eConv.id, true)
 try {
   const hz = rs(<Chat goSettings={() => {}} />)

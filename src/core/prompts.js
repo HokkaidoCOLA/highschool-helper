@@ -173,6 +173,31 @@ export function taskLines(ctx) {
 }
 
 /**
+ * 词条速查提示词（v0.2.1 · Explore 式两段交互第一级）：划词弹出的 80 字速查卡，
+ * 旁路单次调用（不占会话、不归档）；不满意再点「深入探索」开锚定子会话。
+ */
+export const LOOKUP_PROMPT = [
+  '你是「高中助学」的词条速查卡。用户在题目或讲解里选中了一个不理解的词，并给了它出现的上下文。',
+  '用一段不超过 80 字的话讲清它在【这个语境】里指什么：一句定义 + 一句最小例子或与题干的一句联系。',
+  '只输出这段文字：不用列表和标题、不反问、不说「如需深入请咨询」之类的话（界面上另有深入按钮）。',
+].join('\n')
+
+/**
+ * 词条锚点段（v0.2.1）：ctx.term = { term, quote }——本次探索会话围绕哪个词、
+ * 从哪句话里划出来的。第二代复活时与 archiveLines 同屏共存（先词条后档案）。
+ * @param {object} [ctx] { term }。
+ * @returns {string[]} 0–1 条。
+ */
+export function termLines(ctx) {
+  const t = ctx && ctx.term !== null && typeof ctx.term === 'object' ? ctx.term : null
+  if (t === null || typeof t.term !== 'string' || t.term.trim() === '') return []
+  const quote = typeof t.quote === 'string' && t.quote !== '' ? '出处：「' + t.quote.slice(0, 160) + '…」' : ''
+  return ['【本次探索锚定词条】「' + t.term.trim() + '」。' + quote +
+    '本轮只围绕这个词条：先用一个提问探出用户的现有图景（他以为它是什么、在哪一步撞上它的），再顺着修；'
+    + '讲解里冒出的新名词提醒用户继续划词深入，别替他展开——一次对话一个词。除非用户主动换话题。']
+}
+
+/**
  * 上一代探索档案段（M4 复活 · D2① 继承存档）：ctx.archive 由 App 端备好——
  * { conclusion, stuckReplay, chain[], openBranches[], degraded, weaknessNodes[] }。
  * 注入 system 而非重放 transcript：第二代从四件套起聊（06 篇 §5 防「退化重开」）。
@@ -203,13 +228,15 @@ export function archiveLines(ctx) {
 /**
  * 组装 App 端整段 system prompt。
  * @param {string} subject 六科键或 auto。
- * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak, activeTask, archive }——extra 为用户自定义提示词，永远追加在最后。
+ * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak, activeTask, archive, term }——extra 为用户自定义提示词，永远追加在最后。
  * @returns {string} 拼装结果。
  */
 export function buildSystemPrompt(subject, ctx) {
   const c = ctx || {}
   const parts = [BASE]
   parts.push(SUBJECT_PROMPTS[subject] !== undefined ? SUBJECT_PROMPTS[subject] : AUTO_HINT)
+  const term = termLines(c)
+  if (term.length > 0) parts.push(term.join('\n'))
   const archive = archiveLines(c)
   if (archive.length > 0) parts.push(archive.join('\n'))
   const scene = contextLines(c)

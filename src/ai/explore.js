@@ -13,9 +13,9 @@
  *      提示可重试（transcript 本体永远在会话记录里——D2②）。
  */
 import { store, notify } from '../state.js'
-import { getConversation, freezeConversation, pushItemTo } from './session.js'
+import { getConversation, freezeConversation, pushItemTo, forkConversation } from './session.js'
 import { compactCall } from './llm.js'
-import { EXPLORE_COMPACT_PROMPT } from '../core/prompts.js'
+import { EXPLORE_COMPACT_PROMPT, LOOKUP_PROMPT } from '../core/prompts.js'
 
 /** transcript 送样上限（字）：超限留头 6000 + 尾 8000，中段以标记略去。 */
 const TRANSCRIPT_CAP = 16000
@@ -98,6 +98,60 @@ export function parseCompactJson(raw) {
   return { compact, weaknesses }
 }
 
+/**
+ * 速查文本清洗（v0.2.1）：容忍围栏/引号包裹，压空白，硬截 240 字。
+ * @param {string} raw 模型输出。
+ * @returns {string|null} 速查正文；空/不可用返回 null（调用方报错给 UI）。
+ */
+export function parseLookupText(raw) {
+  if (typeof raw !== 'string') return null
+  let s = raw.trim()
+  const FENCE = '\u0060\u0060\u0060'
+  const fence = s.match(new RegExp('^' + FENCE + '[a-z]*\\s*([\\s\\S]*?)\\s*' + FENCE + '$'))
+  if (fence) s = fence[1].trim()
+  s = s.replace(/^["“「]+|["”」]+$/g, '').replace(/\s+/g, ' ').trim()
+  if (s === '') return null
+  return s.slice(0, 240)
+}
+
+/**
+ * 词条速查（Explore 式两段交互第一级）：一次旁路 compactCall，80 字内讲清词条在
+ * 该语境里的意思——不进会话上下文、不归档、不计档案。
+ * @param {string} term 选中的词。
+ * @param {string} quote 出现该词的上下文片段。
+ * @param {object} [opts] { signal }。
+ * @returns {Promise<string>} 速查文本。
+ */
+export async function lookupTerm(term, quote, opts) {
+  const user = '词条：' + String(term).slice(0, 40) + '\n上下文：「' + String(quote || '').slice(0, 300) + '」'
+  const raw = await compactCall({ system: LOOKUP_PROMPT, user, signal: opts && opts.signal })
+  const text = parseLookupText(raw)
+  if (text === null) throw new Error('速查卡没吐出台词，再划一次试试')
+  return text
+}
+
+/**
+ * 划词深入（第二段动作）：锚定 fork 出词条探索会话 + 弱点当场预录 discovered
+ * （划词=用户自认，置信 0.5 高于 AI 事后抽取的 0.4；仍须过抽查闸门才进补习队列）。
+ * @param {string} convId 母会话 id。
+ * @param {number|string} itemId 选区所在消息 id。
+ * @param {string} term 词条。
+ * @param {string} quote 上下文原句。
+ * @returns {{conv: object, weakness: object|null}|null} 新会话与预录记录；分叉失败 null。
+ */
+export function startTermExploration(convId, itemId, term, quote) {
+  const conv = forkConversation(convId, itemId, { term, quote })
+  if (conv === null) return null
+  const weakness = store.addWeakness({
+    subject: conv.subject === 'auto' ? null : conv.subject,
+    node: conv.exploreTerm.term, quote: String(quote || '').slice(0, 200),
+    src: 'conv:' + convId + '#msg:' + String(itemId), source: 'explore', confidence: 0.5,
+  })
+  pushItemTo(conv, { kind: 'notice', text: '🔤 「' + conv.exploreTerm.term + '」已记入弱点表（待验证——抽查过了才进补习队列）。聊完点「❄ 这轮完了」归档。' })
+  notify()
+  return { conv, weakness }
+}
+
 /** 会话的对话行数（user/assistant 条目数，档案里做 transcriptCount）。 */
 function turnCount(conv) {
   return conv.items.filter((i) => i.kind === 'user' || i.kind === 'assistant').length
@@ -122,7 +176,12 @@ export async function freezeExploration(convId) {
     transcriptCount: turnCount(conv),
   }
   try {
-    const raw = await compactCall({ system: EXPLORE_COMPACT_PROMPT, user: transcriptOf(conv.apiMessages) })
+    let transcript = transcriptOf(conv.apiMessages)
+    if (conv.exploreTerm && typeof conv.exploreTerm.term === 'string' && conv.exploreTerm.term !== '') {
+      transcript = '（这是一次词条级探索：用户划出「' + conv.exploreTerm.term + '」说不理解，出处：「' + conv.exploreTerm.quote + '」。'
+        + '四件套围绕该词条产出；它已在弱点表，weaknesses 里同词不要重复记。）\n\n' + transcript
+    }
+    const raw = await compactCall({ system: EXPLORE_COMPACT_PROMPT, user: transcript })
     const parsed = parseCompactJson(raw)
     if (parsed === null) throw new Error('归档输出不是可解析的严格 JSON')
     let ids = []

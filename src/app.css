@@ -939,6 +939,23 @@ body::before, body::after { opacity: var(--gv-blob); }
 .gapRow .grow { flex: 1; min-width: 0; }
 .gapDone { opacity: .6; }
 .finishBtn { margin-top: 8px; }
+
+/* ── v0.2.1 词条级探索：划词浮钮 + 速查卡 ───────────────────────────────── */
+.selExplore {
+  position: fixed; z-index: 70;
+  border: 1px solid rgba(255, 255, 255, .5); border-radius: 999px;
+  background: rgba(22, 138, 74, .95); color: #fff;
+  font-size: 12.5px; padding: 7px 12px; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+.lookupCard {
+  position: fixed; z-index: 72; width: min(280px, 78vw);
+  border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px;
+  background: var(--card); box-shadow: var(--shadow-lg, 0 12px 34px rgba(31, 41, 82, .18));
+  font-size: 13px;
+}
+.lookupCard b { font-size: 14px; }
+.lookupText { white-space: pre-wrap; line-height: 1.55; margin: 4px 0 8px; }
 /* M4：fan 树连线前缀 */
 .treeLink { color: var(--fg2); opacity: .7; }
 

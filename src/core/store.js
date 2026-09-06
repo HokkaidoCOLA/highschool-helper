@@ -893,8 +893,13 @@ export class Store {
     const src = text(input?.src, 120)
     const quote = text(input?.quote, 300)
     const db = this.weaknessDb()
-    const w = db.weaknesses.find((x) => x.status !== 'invalid' && x.status !== 'mastered'
-      && (x.subject ?? '') === (subject ?? '') && x.node === node) ?? null
+    // 合并键：node 必同；subject 精确优先，但「学科未知(null)的既有记录」可被带学科的新
+    // 信号认领并回填（划词预录常发生在 auto 会话——冻结时 AI 才判出学科，不双账本）。
+    const act = db.weaknesses.filter((x) => x.status !== 'invalid' && x.status !== 'mastered' && x.node === node)
+    let w = act.find((x) => (x.subject ?? null) === subject) ?? null
+    if (w === null && subject !== null) w = act.find((x) => x.subject === null || x.subject === undefined) ?? null
+    if (w === null && subject === null && act.length === 1) w = act[0]
+    if (w !== null && (w.subject === null || w.subject === undefined)) w.subject = subject
     if (w !== null) {
       if (!Array.isArray(w.sources)) w.sources = [w.source]
       if (!w.sources.includes(source)) {

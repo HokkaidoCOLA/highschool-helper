@@ -389,6 +389,60 @@ await session.loadConversations()
 const g2r = session.getConversation(g2.id)
 ok('重启后树不塌：第二代字段三处同步在线', g2r.gen === 2 && g2r.parentId === kid.id && g2r.fromExploration === exRec.id)
 srvM4.close()
+// ── v0.2.1 · 词条级探索：速查 → 锚定 fork → 预录 → 注入 → 冻结并档 → 第二代继承 ──
+const TERM_ARCH = {
+  conclusion: '弄懂了单调性描述的是增减趋势不是数值大小',
+  stuckReplay: '把「单调递增」理解成「函数值很大」',
+  chain: ['看定义', '画图像', '用导数判别'],
+  openBranches: ['严格单调与单调的区别'],
+  weaknesses: [{ subject: 'math', node: '单调性', quote: '这到底什么意思' }],
+}
+const seenT = []
+const srvT = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    const sys = String((parsed.messages[0] || {}).content || '')
+    let content
+    if (sys.includes('词条速查卡')) {
+      content = '「单调性」：x 增大 f 也跟着增大的性质，图像上一路向上；说的是趋势不是数值大小。'
+    } else if (sys.includes('探索档案员')) {
+      content = JSON.stringify(TERM_ARCH)
+    } else {
+      seenT.push(sys)
+      content = '我们接着说。'
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }))
+  })
+})
+await new Promise((r) => srvT.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srvT.address().port + '/v1', model: 'stub', apiKey: 'x' })
+const lt = await explore.lookupTerm('单调性', '令 f′=0 求驻点，判断 f 在区间上的单调性')
+ok('速查卡：一段 ≤240 字纯文本，不占会话', typeof lt === 'string' && lt.includes('趋势') && lt.length <= 240)
+const pT = session.newConversation()
+await session.sendUser('讲讲这道导数题', [])
+const itemsT = session.getSession().items
+const started = explore.startTermExploration(pT.id, itemsT[1].id, '单调性', '令 f′=0 求驻点，判断 f 的单调性')
+ok('深入探索：标题=词条的锚定子会话（自动切入）', started !== null && started.conv.title === '单调性' && started.conv.kind === 'exploration' && session.getSession().activeId === started.conv.id)
+ok('锚点上下文完整（term/quote/msgId + 选区所在消息前缀）', started.conv.exploreTerm.msgId === itemsT[1].id && started.conv.exploreTerm.quote.includes('单调性') && started.conv.items.length === 3)
+ok('划词即预录：discovered / confidence 0.5 / 出处带 msg', started.weakness.status === 'discovered' && started.weakness.confidence === 0.5 && started.weakness.evidence[0].src.includes('#msg:'))
+await session.sendUser('我原来说单调就是值很大，对吗', [])
+const sysT = seenT[seenT.length - 1]
+ok('词条锚注入 system（一轮一词纪律）', sysT.includes('【本次探索锚定词条】') && sysT.includes('单调性') && sysT.includes('一次对话一个词'))
+ok('速查调用不进会话（1 条 fork 继承 + 1 条词条内发言）', started.conv.apiMessages.filter((m) => m.role === 'user').length === 2)
+const fzT = await explore.freezeExploration(started.conv.id)
+ok('冻结词条探索：档案围绕锚定词条（送样带标记）', fzT.ok === true && fzT.exploration.compact.conclusion === TERM_ARCH.conclusion)
+const wkT = store.weaknessDb().weaknesses.filter((w) => w.node === '单调性')
+ok('AI 抽取与预录并档成一条（同 node 双证据，不双账本）', wkT.length === 1 && wkT[0].evidence.length >= 2)
+const g2T = session.resumeFromExploration(started.conv.id, fzT.exploration.id)
+ok('第二代继承词条锚（gen=2 且 exploreTerm 在）', g2T.gen === 2 && g2T.exploreTerm !== null && g2T.exploreTerm.term === '单调性')
+await new Promise((r) => setTimeout(r, 700))
+await session.loadConversations()
+const backT = session.getConversation(started.conv.id)
+ok('重启后 exploreTerm 不丢（三处同步）', backT.exploreTerm !== null && backT.exploreTerm.term === '单调性' && backT.exploreTerm.msgId === itemsT[1].id)
+srvT.close()
 
 bad.close()
 server.close()

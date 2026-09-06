@@ -108,8 +108,9 @@ const MAX_TOOL_ROUNDS = 10
  * @param {object[]} apiMessages 会话消息数组（原地追加，下轮复用；system 头每轮重建）。
  * @param {(ev: object) => void} [onEvent] 过程事件 {type:'tool', name, phase, label, ok, error, meta}。
  * @param {AbortSignal} [signal] 「停止」按钮的中止信号。
- * @param {object} [opts] { subject, archive }——subject 本会话锁定的学科（'auto' 或六科键）；
- *   archive 第二代探索的继承视图（src/ai/session.js archiveView 产出）。
+ * @param {object} [opts] { subject, archive, term }——subject 本会话锁定的学科（'auto' 或六科键）；
+ *   archive 第二代探索的继承视图（src/ai/session.js archiveView 产出）；
+ *   term 词条级探索的锚点（conv.exploreTerm）。
  * @returns {Promise<string>} 最终文本。
  */
 export async function runAssistant(apiMessages, onEvent, signal, opts) {
@@ -130,6 +131,7 @@ export async function runAssistant(apiMessages, onEvent, signal, opts) {
     grade: prof.grade, region: prof.region, extra: cfg.systemPrompt, remedying, pendingWeak,
     activeTask: headTask ? { goal: headTask.goal, nodes: headTask.nodes, readyToFinish: headTask.readyToFinish } : undefined,
     archive: opts && opts.archive ? opts.archive : undefined,
+    term: opts && opts.term ? opts.term : undefined,
   }) })
   const defs = createTools(store)
   const byName = new Map(defs.map((d) => [d.name, d]))
