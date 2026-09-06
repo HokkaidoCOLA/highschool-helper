@@ -900,4 +900,27 @@ body::before, body::after { opacity: var(--gv-blob); }
   .convItem:hover { background: var(--inset); }
   .appTab:not(.on):hover { background: var(--inset); color: var(--fg); }
   .heroRow .btn:hover { transform: translateY(-1px) scale(1.02); }
+  .msg:hover .forkBtn { opacity: 1; }
+}
+
+/* ── 双环四库 · B 环（M1）：消息行 🌱 分叉按钮 / 冻结按钮与徽标 ──────────────
+   hover 环境默认藏、悬停浮现；触屏（hover:none）常驻半显——fork 是探索入口，
+   手机上不能只靠 hover 发现。*/
+.msg { position: relative; }
+.msg .forkBtn {
+  position: absolute; top: 6px; z-index: 2;
+  opacity: 0; transition: opacity .16s ease;
+  border: 1px solid rgba(255, 255, 255, .5); border-radius: 9px;
+  background: rgba(22, 138, 74, .92); color: #fff;
+  font-size: 11px; line-height: 1; padding: 4px 7px; cursor: pointer;
+}
+.msg.user .forkBtn { left: 5px; }
+.msg.assistant .forkBtn { right: 5px; }
+.msg .forkBtn:focus-visible { opacity: 1; }
+@media (hover: none) { .msg .forkBtn { opacity: .82; } }
+.freezeBtn { flex-shrink: 0; white-space: nowrap; }
+.frozenBadge {
+  flex-shrink: 0; align-self: center; font-size: 12px; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--line); color: var(--fg2);
+  background: var(--inset); white-space: nowrap;
 }

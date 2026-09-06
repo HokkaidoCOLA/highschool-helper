@@ -234,7 +234,7 @@ export default function Settings() {
 
       <div className="card">
         <h3>关于</h3>
-        <p className="hint">高中助学 App · 核心调度/切题/渲染引擎移植自 DSH 插件 dsh-highschool-tutor（GPL-3.0-or-later）。v1 数据只存本机；AI 讲题与出题将在后续版本经你配置的模型 API 接入。</p>
+        <p className="hint">高中助学 App · 核心调度/切题/渲染引擎移植自已退役的 DSH 插件 dsh-highschool-tutor（GPL-3.0-or-later）；插件退役后全部代码只在本仓库（highschool-tutor-app）维护。数据只存本机；AI 讲题与出题走「设置 → AI 接入」里你配置的模型 API。</p>
       </div>
     </div>
   )

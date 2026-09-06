@@ -99,9 +99,9 @@ npm run ico       # 重新生成 electron/build/icon.ico（矢量配方与 PWA �
 - **API Key**：只存本机 localStorage，不进备份、不外传；
 - **模型名**：需支持 function calling；**拍照讲题需视觉能力**（gpt-4o、qwen-vl、glm-4v 一类）。
 
-「测试连接」一键自检。App 端复刻了插件的 15 个工具协议（`src/core/tools.js` 由同步脚本
-从插件仓库移植），模型每调一次工具都**真实落在本机 Store**：录题排期、翻卡评分、
-可视化讲题卡——插件里工具宿主是 DSH，这里换成了 App 自己的 IndexedDB。
+「测试连接」一键自检。`src/core/tools.js` 承载 15 个工具协议（承自原插件，插件退役后
+只在本仓库维护），模型每调一次工具都**真实落在本机 Store**：录题排期、翻卡评分、
+可视化讲题卡——原插件里工具宿主是 DSH，这里是 App 自己的 IndexedDB。
 
 APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；纯浏览器 PWA 模式直连
 第三方端点可能被 CORS 拦（同源部署或装 APK 是正路）。拍照在 Android 上直接拉系统相机
@@ -118,26 +118,27 @@ APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；�
 演示库、模考成绩原样带过来（文件名与数据结构两边完全一致）。反向：App 的「导出备份 JSON」
 可以写回插件数据目录（改名为对应六个文件即可）。
 
-## 与插件仓库的关系（移植机制）
+## 与插件仓库的关系（已退役）
 
-**能字节级照抄的绝不重写**——引擎与算法两边同源：
+**2026-09-06 拍板：DSH 插件 dsh-highschool-tutor 退役。**本仓库是唯一产品面：不再向插件同步、
+不从插件取码，`src/core/*` 从此只在这里维护（`scripts/sync-from-plugin.mjs` 已改为退役提示，
+`npm run sync` 入口已删除）。历史移植机制存档如下（供考古）：
 
 | 层 | 方式 |
 |---|---|
-| srs / subjects / syllabus / seed / importer / paper / scene / examples / showcase | `npm run sync` 从插件仓库**字节级复制** |
+| srs / subjects / syllabus / seed / importer / paper / scene / examples / showcase | 曾由同步脚本从插件仓库**字节级复制** |
 | canvas 演示引擎 `src/engine/*.browser.js` | 同上（本就是浏览器脚本，一字未改） |
 | store.js | 机械移植：node:fs → IndexedDB（`src/core/idb.js`），业务方法逐行一致；新增 `load/flush/exportAll/importAll` |
 | zipfs.js / docs.js | 机械移植：Buffer/zlib → Uint8Array/fflate + 原生 TextDecoder（GBK/UTF-16 嗅探能力保留） |
 | UI | 全新移动界面（原 client 半边为 DSH 插槽宿主写，形态不同不迁移；组件语义对齐讲题卡/翻卡） |
 
-移植由 `scripts/sync-from-plugin.mjs` 完成：纯逻辑与引擎直接复制；三个 I/O 文件用**正则锚点**改写，
-锚点没命中就大声抛错——插件侧重构后同步不会悄悄产出半旧代码。
-插件仓库的 `frame-smoke`（128 项 canvas 录制断言）覆盖引擎渲染回归：那边绿 = 这边引擎绿。
+当年移植由 `scripts/sync-from-plugin.mjs` 完成：纯逻辑与引擎直接复制；三个 I/O 文件用**正则锚点**
+改写，锚点没命中就大声抛错。引擎渲染回归现由本仓库 test-core 的合成对象断言覆盖。
 
 ## 目录
 
 ```
-src/core/       移植自插件的核心逻辑（同步脚本管理，含 tools.js 15 个工具）+ idb.js / bytes.js
+src/core/       核心逻辑（移植自已退役插件，只在本仓库维护；含 tools.js 15 个工具）+ idb.js / bytes.js
 src/ai/         llm.js —— OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止
 src/engine/     演示引擎四件套（复制）+ boot.js（共享 Player 装载、键盘守卫、主题变量）
 src/ui/         七页：今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置

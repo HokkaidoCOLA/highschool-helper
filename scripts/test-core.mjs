@@ -162,6 +162,86 @@ ok('scene \u4fdd\u7559 mag/mass/label\uff08\u529b\u5b66\u5b57\u6bb5\u767d\u540d\
 })
 
 
+console.log('\n⑤ 双环四库 M1：弱点注册表与探索档案（新表，个人状态数据只在本机）')
+const s2 = await new Store().load()
+const ex1 = s2.saveExploration({
+  convId: 'cv_a', title: '导数探索', subject: '数学', parentId: 'cv_p', gen: 1, transcriptCount: 4,
+  compact: { conclusion: '会拆内外层了', stuckReplay: '卡在「内层忘乘」', chain: ['认外层', null, '乘内层'], openBranches: ['隐函数'] },
+})
+ok('saveExploration：ep_ 前缀 + 学科别名归一 + 非降级', () => {
+  assert.ok(ex1.id.startsWith('ep_'))
+  assert.equal(ex1.subject, 'math')
+  assert.equal(ex1.degraded, false)
+})
+ok('saveExploration：chain 过滤 null、按四件套留存', () => {
+  assert.equal(JSON.stringify(ex1.compact.chain), '["认外层","乘内层"]')
+  assert.equal(ex1.compact.openBranches[0], '隐函数')
+})
+const dep = s2.saveExploration({ convId: 'cv_bad', compact: null })
+ok('降级档：compact 为 null 即 degraded', () => {
+  assert.equal(dep.degraded, true)
+  assert.equal(s2.getExploration(dep.id).compact, null)
+})
+ok('listExplorations 按 convId 过滤', () => {
+  const r = s2.listExplorations({ convId: 'cv_a' })
+  assert.equal(r.total, 1)
+  assert.equal(r.explorations[0].id, ex1.id)
+})
+const w1 = s2.addWeakness({ subject: 'math', node: '复合函数的求导法则', quote: '内层导数老忘乘', src: 'conv:cv_a', source: 'explore', confidence: 0.4 })
+ok('addWeakness：discovered 起步 + wk_ 前缀', () => {
+  assert.equal(w1.status, 'discovered')
+  assert.ok(w1.id.startsWith('wk_'))
+})
+const w2 = s2.addWeakness({ subject: '数学', node: '复合函数的求导法则', quote: '这次又忘了乘内层', src: 'item:it_00001', source: 'grade' })
+ok('同 node 合并成一条（双源交叉验证置信升，D1③）', () => {
+  assert.equal(w2.id, w1.id)
+  assert.equal(s2.listWeaknesses({}).total, 1)
+  assert.deepEqual(w2.sources, ['explore', 'grade'])
+  assert.ok(w2.confidence > 0.5 && w2.confidence <= 0.9)
+  assert.equal(w2.evidence.length, 2)
+})
+const dup = s2.addWeakness({ subject: 'math', node: '复合函数的求导法则', quote: '内层导数老忘乘', src: 'conv:cv_a', source: 'explore' })
+ok('重复 evidence / 同来源不涨', () => {
+  assert.equal(dup.evidence.length, 2)
+  assert.equal(dup.sources.length, 2)
+  assert.equal(dup.confidence, w2.confidence)
+})
+ok('空 node 视为无效信号拒录', () => assert.equal(s2.addWeakness({ subject: 'math', node: '  ' }), null))
+const wdb = s2.weaknessDb()
+wdb.weaknesses[0].status = 'invalid'
+s2.write('weaknesses', wdb)
+const reborn = s2.addWeakness({ subject: 'math', node: '复合函数的求导法则', quote: '又卡了', src: 'conv:cv_b', source: 'explore' })
+ok('invalid 不并档：同 node 再犯是新目标（翻案语义留 M4）', () => {
+  assert.notEqual(reborn.id, w1.id)
+  assert.equal(reborn.status, 'discovered')
+})
+for (let i = 0; i < 503; i += 1) s2.addWeakness({ subject: 'math', node: 'n' + i, source: 'explore' }, 2000 + i)
+ok('weaknesses cap 500 丢最旧', () => {
+  const rows = s2.weaknessDb().weaknesses
+  assert.equal(rows.length, 500)
+  assert.equal(rows.find((x) => x.node === 'n0'), undefined)
+  assert.ok(rows.find((x) => x.node === 'n502'))
+})
+for (let i = 0; i < 205; i += 1) s2.saveExploration({ convId: 'cv_cap' + i, compact: { conclusion: 'c' + i } }, 1000 + i)
+ok('explorations cap 200 丢最旧', () => {
+  const rows = s2.explorationDb().explorations
+  assert.equal(rows.length, 200)
+  assert.equal(rows.find((e) => e.convId === 'cv_cap0'), undefined)
+  assert.ok(rows.find((e) => e.convId === 'cv_cap204'))
+})
+const dumpM1 = s2.exportAll()
+ok('exportAll 覆盖两个新表（E7/红线 3）', () => {
+  assert.ok(Array.isArray(dumpM1['weaknesses.json'].weaknesses))
+  assert.ok(Array.isArray(dumpM1['explorations.json'].explorations))
+  assert.equal(dumpM1['weaknesses.json'].weaknesses.length, 500)
+})
+const s3 = new Store()
+s3.hydrated = new Map(Object.entries(Object.fromEntries(Object.entries(dumpM1).map(([k, v]) => [k, JSON.stringify(v)]))))
+ok('备份水合往返含新表', () => {
+  assert.equal(s3.explorationDb().explorations.length, 200)
+  assert.equal(s3.weaknessDb().weaknesses.length, 500)
+})
+
 // ──  IDB 写语义（真机数据丢失事故防回归）：连接预热后，put 必须在调用同一任务内派发 ──
 const dispatched = []
 globalThis.indexedDB = {

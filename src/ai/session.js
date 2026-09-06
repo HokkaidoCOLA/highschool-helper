@@ -60,6 +60,13 @@ function persist(c) {
     if (!state.convs.some((x) => x.id === c.id)) { saveTimers.delete(c.id); return } // 防抖窗口内被删也要复查
     const slim = {
       id: c.id, title: c.title, subject: c.subject, createdAt: c.createdAt, updatedAt: c.updatedAt,
+      // 双环四库（M1）字段：删了会「重启丢分支」——见本文件「删了又复活」注释的历史教训，
+      // 新字段必须三处同步：创建 / 这里 / loadConversations。
+      kind: c.kind === 'exploration' ? 'exploration' : 'chat',
+      parentId: typeof c.parentId === 'string' ? c.parentId : null,
+      forkFrom: c.forkFrom !== null && typeof c.forkFrom === 'object' ? c.forkFrom : null,
+      gen: Number.isFinite(c.gen) ? Math.trunc(c.gen) : 0,
+      frozen: c.frozen === true,
       items: c.items, apiMessages: c.apiMessages,
     }
     convSet(c.id, JSON.stringify(slim)).catch(() => {})
@@ -82,6 +89,11 @@ export async function loadConversations() {
         id: c.id, title: String(c.title || '新对话'),
         createdAt: Number(c.createdAt) || Date.now(), updatedAt: Number(c.updatedAt) || Date.now(),
         subject: SUBJECT_PROMPTS[c.subject] !== undefined || c.subject === 'auto' ? c.subject : 'auto',
+        kind: c.kind === 'exploration' ? 'exploration' : 'chat',
+        parentId: typeof c.parentId === 'string' ? c.parentId : null,
+        forkFrom: c.forkFrom !== null && typeof c.forkFrom === 'object' ? c.forkFrom : null,
+        gen: Number.isFinite(c.gen) ? Math.max(0, Math.trunc(c.gen)) : 0,
+        frozen: c.frozen === true,
         items: Array.isArray(c.items) ? c.items : [],
         apiMessages: Array.isArray(c.apiMessages) ? c.apiMessages : [],
         busy: false, abort: null,
@@ -106,8 +118,92 @@ export function newConversation() {
     id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
     title: '新对话', createdAt: Date.now(), updatedAt: Date.now(),
     items: [], apiMessages: [], subject: 'auto', busy: false, abort: null,
+    kind: 'chat', parentId: null, forkFrom: null, gen: 0, frozen: false,
   }
   state = { ...state, convs: [c, ...state.convs], activeId: c.id }
+  emit()
+  return c
+}
+
+/** 按 id 取会话（explore.js 冻结归档时用）。 */
+export function getConversation(id) {
+  return state.convs.find((c) => c.id === id) ?? null
+}
+
+/**
+ * 上下文前缀守卫：assistant 带 tool_calls 却没有配齐 tool 响应的前缀会让
+ * OpenAI 兼容端点 400 拒收（会话永久坏掉，见 llm.js MAX_TOOL_ROUNDS 注释）。
+ * 从尾部裁到配对完整为止（tool 响应总在其 assistant 之后，裁 assistant 即连带裁掉散尾 tool 行）。
+ */
+function trimToPairedContext(msgs) {
+  const list = msgs.slice()
+  for (;;) {
+    const provided = new Set()
+    for (const m of list) if (m.role === 'tool' && typeof m.tool_call_id === 'string') provided.add(m.tool_call_id)
+    let dangling = -1
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const calls = Array.isArray(list[i].tool_calls) ? list[i].tool_calls : []
+      if (list[i].role === 'assistant' && calls.length > 0 && calls.some((c) => c === null || typeof c !== 'object' || !provided.has(c.id))) { dangling = i; break }
+    }
+    if (dangling < 0) break
+    list.length = dangling
+  }
+  return list.map((m) => ({ ...m }))
+}
+
+/**
+ * 从某条消息处分叉出探索会话（B 环入口，06 篇 §2-B）。
+ * 复制 items 前缀（含该条）与 apiMessages 的**完整回合**前缀——截断点取消息行上
+ * pushItemTo 记录的 apiLen（老记录没有就向前找最近的；再没有则空上下文，只留转写）。
+ * @param {string} convId 母会话 id
+ * @param {number|string} itemId 母会话中的消息 id
+ * @returns {object|null} 新会话；分叉点不存在时 null
+ */
+export function forkConversation(convId, itemId) {
+  const parent = state.convs.find((x) => x.id === convId)
+  if (parent === undefined || parent === null) return null
+  const idx = parent.items.findIndex((it) => it.id === itemId)
+  if (idx < 0) return null
+  let apiLen = -1
+  for (let i = idx; i >= 0; i -= 1) {
+    if (Number.isFinite(parent.items[i].apiLen)) { apiLen = parent.items[i].apiLen; break }
+  }
+  if (apiLen < 0) apiLen = 0
+  // 净口径截断：剥掉 runAssistant 塞在最前的 system 头（子会话下一轮会按自己学科重建），
+  // 再按 pushItemTo 记的净长度取前缀——两边同一把尺，回合边界才不会错一格。
+  const net = parent.apiMessages.length > 0 && parent.apiMessages[0].role === 'system'
+    ? parent.apiMessages.slice(1) : parent.apiMessages
+  apiLen = Math.min(Math.max(0, Math.trunc(apiLen)), net.length)
+  convSeq += 1
+  const siblings = state.convs.filter((x) => x.parentId === parent.id).length
+  const c = {
+    id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
+    title: String(parent.title || '新对话').slice(0, 14) + ' · 探索 ' + (siblings + 1),
+    createdAt: Date.now(), updatedAt: Date.now(),
+    subject: parent.subject,
+    kind: 'exploration', parentId: parent.id,
+    forkFrom: { itemId, index: idx }, gen: (Number.isFinite(parent.gen) ? parent.gen : 0) + 1,
+    frozen: false,
+    items: parent.items.slice(0, idx + 1).map((it) => ({ ...it })),
+    apiMessages: trimToPairedContext(net.slice(0, apiLen)),
+    busy: false, abort: null,
+  }
+  state = { ...state, convs: [c, ...state.convs], activeId: c.id }
+  emit()
+  persist(c)
+  return c
+}
+
+/**
+ * 冻结/解冻会话（D4：「这轮完了」由用户点；冻结是封口动作，
+ * 四件套归档在 src/ai/explore.js 完成）。frozen 会话 sendUser 拒发。
+ */
+export function freezeConversation(id, frozen = true) {
+  const c = state.convs.find((x) => x.id === id)
+  if (c === undefined || c === null) return null
+  c.frozen = frozen === true
+  c.updatedAt = Date.now()
+  persist(c)
   emit()
   return c
 }
@@ -174,10 +270,19 @@ export function removeDraftImage(i) {
   emit()
 }
 
+/** 模型上下文的「净长度」：runAssistant 每轮临时 unshift 的 system 头不算对话内容。 */
+function netApiLen(conv) {
+  const arr = Array.isArray(conv.apiMessages) ? conv.apiMessages : []
+  return arr.length - (arr.length > 0 && arr[0] && arr[0].role === 'system' ? 1 : 0)
+}
+
 /** 往指定会话追加一条消息（工具事件写回发起会话，而非当前活跃会话）。 */
 export function pushItemTo(conv, it) {
   if (conv === null || conv === undefined) return
-  conv.items = conv.items.concat([{ id: ++uid, ...it }])
+  // apiLen：这条消息落地时上下文的净长度（不含 system 头）——forkConversation 靠它
+  // 把 apiMessages 截到同样的回合边界（user 行在 push 用户 api 消息之后才落，见 sendUser）。
+  const marked = { id: ++uid, apiLen: netApiLen(conv), ...it }
+  conv.items = conv.items.concat([marked])
   conv.updatedAt = Date.now()
   sortByUpdated()
   persist(conv)
@@ -202,17 +307,22 @@ function onToolEvent(conv, ev) {
 export function sendUser(text, images) {
   const conv = activeConv()
   if (conv === null || conv.busy) return Promise.resolve()
+  if (conv.frozen === true) {
+    pushItemTo(conv, { kind: 'notice', text: '❄ 本轮探索已冻结归档。想继续聊，可从任意消息分叉条新探索（🌱）' })
+    return Promise.resolve()
+  }
   const imgs = images || []
   if (conv.title === '新对话' && text.trim() !== '') conv.title = text.trim().slice(0, 18)
   conv.busy = true
-  pushItemTo(conv, { kind: 'user', text, images: imgs })
-  state = { ...state, draftText: '', draftImages: [] }
   conv.apiMessages.push({
     role: 'user',
     content: imgs.length > 0
       ? [{ type: 'text', text: text || '请识别这张图片里的题目并讲解。' }].concat(imgs.map((url) => ({ type: 'image_url', image_url: { url } })))
       : text,
   })
+  // 用户 api 消息先入列再落 UI 行：该行记到的 apiLen 才包含自己（fork 在这里续聊要带着它）
+  pushItemTo(conv, { kind: 'user', text, images: imgs })
+  state = { ...state, draftText: '', draftImages: [] }
   const ctrl = new AbortController()
   conv.abort = ctrl
   emit()

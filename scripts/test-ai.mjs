@@ -178,6 +178,102 @@ session.setConversationSubject(session.getSession().activeId, '不存在的科')
 ok('非法学科被拒（保持 auto）', session.getSession().convs.find((c) => c.id === session.getSession().activeId).subject === 'auto')
 srv3.close()
 
+// ── M1 · B 环骨架：fork → 聊 → ❄冻结归档 → 重启 B₂ 完整（研究区 PLAN §2-M1）──
+const explore = await import('../src/ai/explore.js')
+const ARCHIVE = {
+  conclusion: '链式法则会拆内外层了',
+  stuckReplay: '学生说「内层导数老忘乘」，两次举例后通',
+  chain: ['先认外层', '再导内层', '相乘'],
+  openBranches: ['隐函数求导没碰'],
+  weaknesses: [{ subject: 'math', node: '复合函数的求导法则', quote: '内层导数老忘乘' }],
+}
+let archiveCalls = 0
+const srvM1 = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    const isArchive = parsed.messages[0] && parsed.messages[0].role === 'system' && String(parsed.messages[0].content).includes('探索档案员')
+    let content
+    if (isArchive) {
+      archiveCalls += 1
+      content = archiveCalls === 2 ? '抱歉，这轮我总结不出来。' : JSON.stringify(ARCHIVE)
+    } else {
+      content = '好，我们继续。'
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }))
+  })
+})
+await new Promise((r) => srvM1.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srvM1.address().port + '/v1', model: 'stub', apiKey: 'x' })
+
+const parentConv = session.newConversation()
+await session.sendUser('复合函数到底怎么求导', [])
+const pitems = session.getSession().items
+const kid = session.forkConversation(parentConv.id, pitems[0].id)
+ok('fork：kind/gen/parentId/forkFrom 齐', kid.kind === 'exploration' && kid.gen === 1 && kid.parentId === parentConv.id && kid.forkFrom.itemId === pitems[0].id)
+ok('fork：标题「母题 · 探索 N」', kid.title.includes('· 探索 1'), kid.title)
+ok('fork：items 前缀含截断点那条', kid.items.length === 1 && kid.items[0].kind === 'user')
+ok('fork：apiMessages 截到完整回合（含该 user 条）', kid.apiMessages.length === 1 && kid.apiMessages[0].role === 'user')
+ok('fork 后活跃即子会话', session.getSession().activeId === kid.id)
+const kid2 = session.forkConversation(parentConv.id, pitems[1].id)
+ok('第二条探索序号 +1', kid2.title.includes('· 探索 2'), kid2.title)
+ok('assistant 行分叉：上下文 = user+assistant（system 会被重建）', kid2.apiMessages.filter((m) => m.role !== 'system').length === 2)
+session.switchConversation(kid.id)
+await session.sendUser('那隐函数呢……先记着', [])
+ok('子会话续聊不回流母会话', session.getSession().items.length === 3 && parentConv.items.length === 2)
+
+const fz = await explore.freezeExploration(kid.id)
+ok('❄冻结归档成功：四件套完整入库', fz.ok === true && fz.exploration.compact.conclusion === ARCHIVE.conclusion && fz.exploration.compact.chain.length === 3 && archiveCalls === 1)
+ok('归档后 B₂ 会话冻结（frozen=true）', session.getConversation(kid.id).frozen === true)
+const beforeFrozen = session.getSession().items.length
+await session.sendUser('冻结后还能发吗', [])
+ok('冻结会话拒发只留提示', session.getSession().items.length === beforeFrozen + 1 && session.getSession().items[beforeFrozen].kind === 'notice' && !session.getSession().items.some((i) => i.text === '冻结后还能发吗'))
+const explRec = store.explorationDb().explorations.find((e) => e.convId === kid.id)
+ok('B₂ 档案在 explorations 表（degraded=false）', Boolean(explRec) && explRec.degraded === false && explRec.compact.openBranches.length === 1)
+const wkList = store.listWeaknesses({})
+ok('弱点入库 source=explore/status=discovered（M1 只入库不注入）', wkList.total === 1 && wkList.weaknesses[0].status === 'discovered' && wkList.weaknesses[0].source === 'explore')
+ok('弱点证据带会话出处', wkList.weaknesses[0].evidence[0].src === 'conv:' + kid.id)
+
+// 降级路径：归档调用返回散文 → 只存 transcript 档、弱点不涨、解冻可重试
+session.switchConversation(kid2.id)
+await session.sendUser('从第二条探索继续', [])
+const fz2 = await explore.freezeExploration(kid2.id)
+ok('解析失败降级：ok=false + degraded 档 + compact 空', fz2.ok === false && fz2.degraded === true && fz2.exploration.degraded === true && fz2.exploration.compact === null)
+ok('降级不动弱点表', store.listWeaknesses({}).total === 1)
+ok('降级后自动解冻（可再点这轮完了）', session.getConversation(kid2.id).frozen === false)
+const fz3 = await explore.freezeExploration(kid2.id)
+ok('解冻重试成功', fz3.ok === true && archiveCalls === 3)
+
+// 重启：会话与两张新表都从持久层回读
+await new Promise((r) => setTimeout(r, 700))
+await store.flush()
+await session.loadConversations()
+const rb = session.getConversation(kid.id)
+ok('重启后 B₂ 会话骨架完整（三处同步生效）', rb.kind === 'exploration' && rb.frozen === true && rb.gen === 1 && rb.parentId === parentConv.id && rb.items.length >= 5)
+const { Store } = await import('../src/core/store.js')
+const sRestart = await new Store().load()
+const arch2 = sRestart.explorationDb().explorations.find((e) => e.convId === kid.id)
+ok('重启后四件套从盘读回', Boolean(arch2) && arch2.compact.stuckReplay === ARCHIVE.stuckReplay && arch2.weaknessIds.length === 1)
+const wk2 = sRestart.weaknessDb().weaknesses
+ok('重启后弱点表从盘读回', wk2.length === 1 && wk2[0].node === '复合函数的求导法则')
+
+// 老记录零回归：无新字段的旧会话照常加载；无 apiLen 的旧消息分叉降级为空上下文
+const { convSet } = await import('../src/core/idb.js')
+await convSet('cv_legacy', JSON.stringify({
+  id: 'cv_legacy', title: '老会话', subject: 'auto', createdAt: 1, updatedAt: Date.now(),
+  items: [{ id: 42, kind: 'user', text: '老消息' }],
+  apiMessages: [{ role: 'user', content: '老消息' }],
+}))
+await session.loadConversations()
+const legacy = session.getConversation('cv_legacy')
+ok('老记录默认值齐（chat/gen0/未冻结/无父）', legacy.kind === 'chat' && legacy.gen === 0 && legacy.frozen === false && legacy.parentId === null)
+const lkid = session.forkConversation('cv_legacy', 42)
+ok('老消息无 apiLen：分叉只带转写不炸', lkid.items.length === 1 && lkid.apiMessages.length === 0)
+session.deleteConversation(lkid.id)
+srvM1.close()
+
 bad.close()
 server.close()
 

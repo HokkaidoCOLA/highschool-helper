@@ -12,6 +12,7 @@ import Stats from '../src/ui/Stats.jsx'
 import Settings from '../src/ui/Settings.jsx'
 import App from '../src/ui/App.jsx'
 import Chat from '../src/ui/Chat.jsx'
+import ConvDrawer from '../src/ui/ConvDrawer.jsx'
 
 let passed = 0
 const failures = []
@@ -38,6 +39,15 @@ const { normalizeScene, sceneSummary, keySteps } = await import('../src/core/sce
 const s = normalizeScene(EXAMPLES.plot2d)
 store.saveDemo({ title: s.scene.title, kind: 'plot2d', subject: 'math', topic: s.scene.topic, summary: sceneSummary(s.scene), keySteps: keySteps(s.scene), scene: s.scene })
 
+// ── M1 探索态：造一个分叉出来的探索会话，让 Chat/ConvDrawer 吃到 kind/frozen 分支 ──
+const session = await import('../src/ai/session.js')
+await session.loadConversations()
+const mConv = session.newConversation()
+session.pushItem({ kind: 'user', text: '这条能分叉吗' })
+session.pushItem({ kind: 'assistant', text: '可以' })
+const mItems = session.getSession().items
+const eConv = session.forkConversation(mConv.id, mItems[1].id)
+
 const checks = [
   ['今日页', <Today goReview={() => {}} />, '距高考'],
   ['今日页·倒计时数字', <Today goReview={() => {}} />, '天 · 距高考（'],
@@ -52,6 +62,9 @@ const checks = [
   ['App 外壳', <App />, '高中助学'],
   ['聊天页（未配置提示）', <Chat goSettings={() => {}} />, '还没有接模型'],
   ['设置页·AI 接入卡', <Settings />, 'AI 接入'],
+  ['聊天页·🌱 分叉按钮', <Chat goSettings={() => {}} />, '🌱 探索'],
+  ['聊天页·探索冻结入口', <Chat goSettings={() => {}} />, '这轮完了'],
+  ['会话抽屉·↪ 前缀', <ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} />, '↪'],
 ]
 for (const [label, node, needle] of checks) {
   try {
@@ -60,6 +73,14 @@ for (const [label, node, needle] of checks) {
   } catch (err) {
     ok(label, false, String(err && err.message ? err.message : err).slice(0, 120))
   }
+}
+// 冻结后：头部换成徽标，按钮消失（frozen 只读语义的渲染面）
+session.freezeConversation(eConv.id, true)
+try {
+  const hz = rs(<Chat goSettings={() => {}} />)
+  ok('聊天页·已冻结徽标', hz.includes('已冻结') && !hz.includes('这轮完了'))
+} catch (err) {
+  ok('聊天页·已冻结徽标', false, String(err && err.message ? err.message : err).slice(0, 120))
 }
 console.log('')
 if (failures.length > 0) { console.error('UI 冒烟失败 ' + failures.length + ' 项'); process.exit(1) }

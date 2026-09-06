@@ -9,13 +9,15 @@
 /**
  * dsh-highschool-tutor — 持久化数据层。
  *
- * App 版：六份 JSON 内容整体存放在浏览器 IndexedDB（库 hst-app / 表 files，键 = 文件名）：
+ * App 版：八份 JSON 内容整体存放在浏览器 IndexedDB（库 hst-app / 表 files，键 = 文件名）：
  *
- *   profile.json    学情设置：年级、高考日期、启用学科、每日目标
- *   items.json      题库：错题（mistake）与知识卡（card），含各自的复习状态
- *   reviews.json    复习流水：每次评分一条，用于统计正确率/复习量/连续天数
- *   studylog.json   学习日志：按逻辑日记录各科学习分钟数、章节进度、随手笔记
- *   exams.json      模考成绩：单科分/总分/排名，用于画趋势
+ *   profile.json      学情设置：年级、高考日期、启用学科、每日目标
+ *   items.json        题库：错题（mistake）与知识卡（card），含各自的复习状态
+ *   reviews.json      复习流水：每次评分一条，用于统计正确率/复习量/连续天数
+ *   studylog.json     学习日志：按逻辑日记录各科学习分钟数、章节进度、随手笔记
+ *   exams.json        模考成绩：单科分/总分/排名，用于画趋势
+ *   weaknesses.json   弱点注册表（双环四库 · 两环唯一汇点，M1 起）：对话被动采集 + 评分不足
+ *   explorations.json 探索档案 B₂（M1 起）：冻结探索的四件套（结论/卡点回放/推理链/未探索分支）
  *
  * 渲染前先 await store.load() 水合进内存缓存，业务方法保持与插件版一致的同步签名；
  * 写入即更新缓存并异步落盘（失败只告警），await store.flush() 可等待全部写完。
@@ -39,6 +41,8 @@ const FILES = {
   studylog: 'studylog.json',
   exams: 'exams.json',
   demos: 'demos.json',
+  weaknesses: 'weaknesses.json',
+  explorations: 'explorations.json',
 }
 
 /** 复习流水保留条数上限（超出丢弃最旧的）。 */
@@ -46,6 +50,12 @@ const REVIEW_LOG_CAP = 20_000
 
 /** 演示保留条数上限（超出丢弃最旧的；一份演示几 KB，300 份约 1 MB）。 */
 const DEMO_CAP = 300
+
+/** 弱点表上限（PLAN 拍板 500；个人状态数据，只存本机——铁律 R1）。 */
+const WEAKNESS_CAP = 500
+
+/** 探索档案上限（PLAN 拍板 200；档案只存四件套与元数据，transcript 留在会话本体——D2②）。 */
+const EXPLORATION_CAP = 200
 
 /** 单条文本字段长度上限，防止把整篇文章塞进题库。 */
 const TEXT_CAP = 6000
@@ -831,6 +841,189 @@ export class Store {
     return { deleted }
   }
 
+  // ── 弱点注册表（双环四库 · B₁ ≡ A 环不足清单，两环唯一汇点）──────────────
+  //
+  // 状态机（06 篇 §4，M2 起由 tutor_weakness 工具驱动流转）：
+  //   discovered → verifying → remedying → mastered | invalid
+  // M1 只做「采集入库」：冻结的探索会话把 AI 抽出的弱点写进来（source=explore，
+  // status=discovered），不注入任何计划——验证闸门未建之前防污染（PLAN M1 闸门）。
+
+  /**
+   * 弱点表文件。
+   * @returns {{version: number, seq: number, weaknesses: object[]}} 弱点集合。
+   */
+  weaknessDb() {
+    const raw = this.read('weaknesses', () => ({ version: 1, seq: 0, weaknesses: [] }))
+    if (!Array.isArray(raw.weaknesses)) raw.weaknesses = []
+    if (!Number.isFinite(raw.seq)) raw.seq = raw.weaknesses.length
+    return raw
+  }
+
+  /**
+   * 登记一条弱点。同 (subject, node) 的活跃记录合并成一条（杜绝双账本，E8 同类病）：
+   * evidence 追加去重、来源并入；双源（explore+grade）交叉验证置信度升（D1③）。
+   * invalid 记录不并——那是翻案定论，同 node 再犯算新目标（M4 翻案链语义）。
+   * @param {object} input { subject, node, quote?, src?, source?, confidence? }——source: explore|grade。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 合并/新建后的记录；node 为空视为无效信号，返回 null。
+   */
+  addWeakness(input, now = Date.now()) {
+    const node = text(input?.node, 80)
+    if (node === '') return null
+    const subject = toSubject(input?.subject)
+    const source = input?.source === 'grade' ? 'grade' : 'explore'
+    const src = text(input?.src, 120)
+    const quote = text(input?.quote, 300)
+    const db = this.weaknessDb()
+    const w = db.weaknesses.find((x) => x.status !== 'invalid'
+      && (x.subject ?? '') === (subject ?? '') && x.node === node) ?? null
+    if (w !== null) {
+      if (!Array.isArray(w.sources)) w.sources = [w.source]
+      if (!w.sources.includes(source)) {
+        w.sources.push(source)
+        if (w.sources.length > 1) w.confidence = Math.min(0.9, (Number(w.confidence) || 0.4) + 0.2) // 交叉验证升
+      }
+      if (quote !== '' && !w.evidence.some((e) => e.quote === quote && (e.src ?? '') === src)) {
+        w.evidence.push({ src, quote, ts: now })
+        if (w.evidence.length > 6) w.evidence = w.evidence.slice(-6)
+      }
+      w.updatedAt = now
+      this.write('weaknesses', db)
+      return w
+    }
+    const confidence = Number.isFinite(Number(input?.confidence))
+      ? Math.min(0.9, Math.max(0.1, Number(input.confidence)))
+      : 0.4
+    db.seq += 1
+    const record = {
+      id: 'wk_' + String(db.seq).padStart(4, '0'),
+      subject, node,
+      source, sources: [source],
+      status: 'discovered',
+      confidence,
+      evidence: quote === '' && src === '' ? [] : [{ src, quote, ts: now }],
+      createdAt: now, updatedAt: now,
+    }
+    db.weaknesses.push(record)
+    if (db.weaknesses.length > WEAKNESS_CAP) {
+      db.weaknesses.sort((a, b) => a.createdAt - b.createdAt)
+      db.weaknesses = db.weaknesses.slice(db.weaknesses.length - WEAKNESS_CAP)
+    }
+    this.write('weaknesses', db)
+    return record
+  }
+
+  /**
+   * 弱点列表（置信度降序、同级按更新时间降序）。
+   * @param {object} [filter] { status, subject, node, limit }。
+   * @returns {{total: number, weaknesses: object[]}} 结果。
+   */
+  listWeaknesses(filter = {}) {
+    const status = text(filter.status, 20)
+    const subject = filter.subject === undefined ? null : toSubject(filter.subject)
+    const node = text(filter.node, 80)
+    let rows = this.weaknessDb().weaknesses.filter((w) => {
+      if (status !== '' && w.status !== status) return false
+      if (filter.subject !== undefined && (subject === null || w.subject !== subject)) return false
+      if (node !== '' && w.node !== node) return false
+      return true
+    })
+    rows = rows.slice().sort((a, b) => (b.confidence - a.confidence) || (b.updatedAt - a.updatedAt))
+    const total = rows.length
+    const limit = Number.isFinite(filter.limit) ? Math.min(200, Math.max(1, Math.trunc(filter.limit))) : 50
+    return { total, weaknesses: rows.slice(0, limit) }
+  }
+
+  // ── 探索档案（B₂）──────────────────────────────────────────────────────────
+
+  /**
+   * 探索档案文件。
+   * @returns {{version: number, seq: number, explorations: object[]}} 档案集合。
+   */
+  explorationDb() {
+    const raw = this.read('explorations', () => ({ version: 1, seq: 0, explorations: [] }))
+    if (!Array.isArray(raw.explorations)) raw.explorations = []
+    if (!Number.isFinite(raw.seq)) raw.seq = raw.explorations.length
+    return raw
+  }
+
+  /**
+   * 保存一份探索档案（冻结时由 src/ai/explore.js 调用）。compact 传 null 即降级档
+   * （LLM 输出不可解析：只留会话指针与 degraded 标记——「只存 transcript 不入库」，
+   * transcript 本体在会话里，弱点一条不进）。
+   * @param {object} rec { id?, convId, title?, subject?, parentId?, gen?, compact?, weaknessIds?, transcriptCount?, degraded? }。
+   *   compact = { conclusion, stuckReplay, chain[], openBranches[] }（D2① 四件套，缺件则第二代退化重开）。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object} 写入后的记录。
+   */
+  saveExploration(rec, now = Date.now()) {
+    const db = this.explorationDb()
+    const existing = typeof rec?.id === 'string' && rec.id !== ''
+      ? db.explorations.find((e) => e.id === rec.id) ?? null
+      : null
+    const c = rec?.compact !== null && typeof rec?.compact === 'object' ? rec.compact : null
+    const compact = c === null ? null : {
+      conclusion: text(c.conclusion, 1500),
+      stuckReplay: text(c.stuckReplay, 2500),
+      chain: Array.isArray(c.chain) ? c.chain.filter((s) => s !== null && s !== undefined).slice(0, 12).map((s) => text(typeof s === 'string' ? s : JSON.stringify(s), 300)).filter((s) => s !== '') : [],
+      openBranches: Array.isArray(c.openBranches) ? c.openBranches.filter((s) => s !== null && s !== undefined).slice(0, 8).map((s) => text(typeof s === 'string' ? s : JSON.stringify(s), 200)).filter((s) => s !== '') : [],
+    }
+    const record = {
+      id: existing?.id ?? 'ep_' + String(db.seq + 1).padStart(4, '0'),
+      convId: text(rec?.convId, 80) || existing?.convId || '',
+      title: text(rec?.title, 60) || existing?.title || '',
+      subject: rec?.subject !== undefined ? (toSubject(rec.subject) ?? null) : existing?.subject ?? null,
+      parentId: text(rec?.parentId, 80) || existing?.parentId || '',
+      gen: Number.isFinite(Number(rec?.gen)) ? Math.max(0, Math.trunc(Number(rec.gen))) : existing?.gen ?? 1,
+      compact,
+      degraded: compact === null ? true : Boolean(rec?.degraded),
+      weaknessIds: Array.isArray(rec?.weaknessIds)
+        ? rec.weaknessIds.slice(0, 12).map((s) => text(s, 40)).filter((s) => s !== '')
+        : existing?.weaknessIds ?? [],
+      transcriptCount: Number.isFinite(Number(rec?.transcriptCount)) ? Math.max(0, Math.trunc(Number(rec.transcriptCount))) : existing?.transcriptCount ?? 0,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    const idx = db.explorations.findIndex((e) => e.id === record.id)
+    if (idx >= 0) db.explorations[idx] = record
+    else { db.seq += 1; db.explorations.push(record) }
+    if (db.explorations.length > EXPLORATION_CAP) {
+      db.explorations.sort((a, b) => a.updatedAt - b.updatedAt)
+      db.explorations = db.explorations.slice(db.explorations.length - EXPLORATION_CAP)
+    }
+    this.write('explorations', db)
+    return record
+  }
+
+  /**
+   * 档案列表（最近更新在前）。
+   * @param {object} [filter] { subject, convId, degraded, limit }。
+   * @returns {{total: number, explorations: object[]}} 结果。
+   */
+  listExplorations(filter = {}) {
+    const subject = filter.subject === undefined ? null : toSubject(filter.subject)
+    const convId = text(filter.convId, 80)
+    let rows = this.explorationDb().explorations.filter((e) => {
+      if (subject !== null && e.subject !== subject) return false
+      if (convId !== '' && e.convId !== convId) return false
+      if (filter.degraded !== undefined && Boolean(e.degraded) !== Boolean(filter.degraded)) return false
+      return true
+    })
+    rows = rows.slice().sort((a, b) => b.updatedAt - a.updatedAt)
+    const total = rows.length
+    const limit = Number.isFinite(filter.limit) ? Math.min(200, Math.max(1, Math.trunc(filter.limit))) : 40
+    return { total, explorations: rows.slice(0, limit) }
+  }
+
+  /**
+   * 取一份档案。
+   * @param {string} id 档案 id。
+   * @returns {object|null} 档案。
+   */
+  getExploration(id) {
+    return this.explorationDb().explorations.find((e) => e.id === id) ?? null
+  }
+
   // ── 汇总视图 ──────────────────────────────────────────────────────────────
 
   /**
@@ -1006,6 +1199,8 @@ export class Store {
       [FILES.studylog]: this.studyLog(),
       [FILES.exams]: this.examDb(),
       [FILES.demos]: this.demoDb(),
+      [FILES.weaknesses]: this.weaknessDb(),
+      [FILES.explorations]: this.explorationDb(),
     }
   }
 

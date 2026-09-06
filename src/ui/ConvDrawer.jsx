@@ -57,7 +57,7 @@ export function ConvPanel({ convs, activeId, onClose, onNew, onSwitch, onRename,
             ) : (
               <div className="convRow">
                 <div className="convText">
-                  <div className="convTitle">{c.title}</div>
+                  <div className="convTitle">{c.parentId ? '↪ ' : ''}{c.frozen === true ? '❄ ' : ''}{c.title}</div>
                   <div className="convMeta">
                     {c.subject !== 'auto' ? <span className="chipDot" style={{ background: (SUBJECTS.find((x) => x.key === c.subject) || { color: '#888' }).color }} /> : null}
                     {c.busy ? '回复中 · ' : ''}{fmtAgo(c.updatedAt)}前 · {c.items.filter((i) => i.kind === 'user').length} 问

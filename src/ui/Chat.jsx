@@ -9,7 +9,8 @@
 import React from 'react'
 import { store, notify } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
-import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject } from '../ai/session.js'
+import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject, forkConversation } from '../ai/session.js'
+import { freezeExploration } from '../ai/explore.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
 import { subjectLabel, SUBJECTS } from '../core/subjects.js'
@@ -190,6 +191,13 @@ export default function Chat({ goSettings }) {
     sendUser(text, s.draftImages)
   }
 
+  // 活跃会话（头部按钮按 kind/frozen 状态出；未加载完时 null）
+  const active = s.convs.find((c) => c.id === s.activeId) || null
+  // 🌱 从某条消息分叉探索（B 环入口）：成功后自动切到新会话
+  const forkFrom = (itemId) => {
+    if (forkConversation(s.activeId, itemId) === null) pushItem({ kind: 'notice', text: '这条消息没法分叉（可能已被删除）' })
+  }
+
   const keyDown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !/iPhone|Android/i.test(navigator.userAgent)) { ev.preventDefault(); send() } }
 
   return (
@@ -219,6 +227,11 @@ export default function Chat({ goSettings }) {
           {SUBJECTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
         </select>
         <div className="chatTopTitle">{(s.convs.find((c) => c.id === s.activeId) || { title: '新对话' }).title}</div>
+        {active !== null && active.kind === 'exploration' ? (
+          active.frozen === true
+            ? <span className="frozenBadge" title="本轮已冻结归档：只读留档，想续可从任意消息 🌱 再分叉">❄ 已冻结</span>
+            : <button type="button" className="btn sm freezeBtn" title="封口并归档：AI 压出四件套（结论/卡点回放/推理链/未探索分支），采到的弱点入表待验证" onClick={() => { freezeExploration(active.id) }}>❄ 这轮完了</button>
+        ) : null}
         <button type="button" className="iconBtn flat" title="新对话" onClick={newConversation}><IconPlus /></button>
       </div>
       {!aiReady() ? (
@@ -246,9 +259,15 @@ export default function Chat({ goSettings }) {
             <div className="msg user" key={it.id}>
               {it.images && it.images.length > 0 ? <div className="msgImgs">{it.images.map((u, i) => <img key={i} src={u} alt="" />)}</div> : null}
               {it.text ? <div className="msgBody">{it.text}</div> : null}
+              <button type="button" className="forkBtn" title="从这条分叉一条探索（B 环）" onClick={() => forkFrom(it.id)}>🌱 探索</button>
             </div>
           )
-          if (it.kind === 'assistant') return <div className="msg assistant" key={it.id}><div className="msgBody">{it.text}</div></div>
+          if (it.kind === 'assistant') return (
+            <div className="msg assistant" key={it.id}>
+              <div className="msgBody">{it.text}</div>
+              <button type="button" className="forkBtn" title="从这条分叉一条探索（B 环）" onClick={() => forkFrom(it.id)}>🌱 探索</button>
+            </div>
+          )
           if (it.kind === 'tool') return <div className={'toolLine ' + (it.ok ? '' : 'bad')} key={it.id}>{it.label}{it.ok ? '' : '（' + it.error + '）'}</div>
           if (it.kind === 'error') return <div className="toolLine bad" key={it.id}>{it.text}</div>
           if (it.kind === 'notice') return <div className="toolLine" key={it.id}>{it.text}</div>

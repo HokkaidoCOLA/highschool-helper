@@ -4,12 +4,11 @@
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "高中三年学习与巩固助手（Android APK / Windows 桌面 / PWA 三端同源）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎由 dsh-highschool-tutor 插件机械移植（scripts/sync-from-plugin.mjs），GPL-3.0-or-later。",
+  "description": "高中三年学习与巩固助手（Android APK / Windows 桌面 / PWA 三端同源）：错题本 + 艾宾浩斯复习 + 知识卡片 + 动态演示 + 试卷导入 + 学情统计。核心逻辑与渲染引擎移植自已退役的 dsh-highschool-tutor 插件，本仓库是唯一维护源，GPL-3.0-or-later。",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sync": "node scripts/sync-from-plugin.mjs",
     "icons": "node scripts/gen-icons.mjs",
     "test": "node scripts/test-core.mjs && node scripts/test-ai.mjs && node scripts/test-ui.mjs",
     "apk": "bash scripts/build-apk.sh",

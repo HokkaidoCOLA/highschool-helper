@@ -66,6 +66,32 @@ async function callApi(cfg, body, signal) {
   return data
 }
 
+/**
+ * 单次文本补全（不带工具、不接会话）：探索冻结归档 compact 等旁路调用专用。
+ * 与 runAssistant 的区别：system 由调用方给全（不拼学习教练三层），单请求单响应，
+ * 模型若发起 tool_calls 直接判为失败（旁路调用没有执行器）。
+ * @param {object} opts { system, user, signal?, maxTokens? }。
+ * @returns {Promise<string>} 响应文本。
+ */
+export async function compactCall(opts) {
+  const cfg = loadAiConfig()
+  if (!aiReady()) throw new Error('尚未配置模型：去「设置 → AI 接入」填 baseUrl / model / apiKey')
+  const body = {
+    model: cfg.model,
+    messages: [
+      { role: 'system', content: String(opts.system || '') },
+      { role: 'user', content: String(opts.user || '') },
+    ],
+    temperature: 0.2,
+  }
+  if (Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0) body.max_tokens = Math.trunc(Number(opts.maxTokens))
+  const data = await callApi(cfg, body, opts.signal)
+  const msg = data.choices[0] && data.choices[0].message
+  if (!msg) throw new Error('归档响应缺少 message')
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) throw new Error('归档调用被模型当成工具会话')
+  return String(msg.content || '')
+}
+
 /** 连接自检：试一次最小 chat 请求（设置页「测试连接」）。 */
 export async function testConnection() {
   const cfg = loadAiConfig()
