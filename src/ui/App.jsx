@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-/** 应用骨架：底部导航八页，聊天为默认主页。 */
+/** 应用骨架：底部导航九页（M3 加「任务」），聊天为默认主页。 */
 import React from 'react'
-import { IconChat, IconToday, IconReview, IconLibrary, IconDemo, IconDocs, IconStats, IconSettings } from './icons.jsx'
+import { IconChat, IconTask, IconToday, IconReview, IconLibrary, IconDemo, IconDocs, IconStats, IconSettings } from './icons.jsx'
 import Chat from './Chat.jsx'
+import Tasks from './Tasks.jsx'
 import Today from './Today.jsx'
 import Review from './Review.jsx'
 import Library from './Library.jsx'
@@ -14,6 +15,7 @@ import VBar from './VBar.jsx'
 
 const TABS = [
   { key: 'chat', label: '聊天', C: Chat, I: IconChat },
+  { key: 'tasks', label: '任务', C: Tasks, I: IconTask },
   { key: 'today', label: '今日', C: Today, I: IconToday },
   { key: 'review', label: '复习', C: Review, I: IconReview },
   { key: 'library', label: '题库', C: Library, I: IconLibrary },
@@ -46,7 +48,7 @@ export default function App() {
         />
       </main>
       <div className="railWrap">
-        <nav className="appTabs eight" ref={tabsRef}>
+        <nav className="appTabs nine" ref={tabsRef}>
           {TABS.map((t) => (
             <button key={t.key} type="button" className={tab === t.key ? 'appTab on' : 'appTab'} onClick={() => setTab(t.key)}>
               <t.I />

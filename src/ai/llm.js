@@ -117,14 +117,17 @@ export async function runAssistant(apiMessages, onEvent, signal, opts) {
   // system 每轮重建：会话可中途切换学科，旧的 system 头整体换掉
   while (apiMessages.length > 0 && apiMessages[0].role === 'system') apiMessages.shift()
   const prof = store.profile()
-  // 双环四库 M2 同源注入（D1）：只给过了验证闸门的补习焦点；taskNodes 暂空——
-  // M3 有活跃任务后在此传入任务节点集做交集过滤（store.remedyInjection 已支持）。
-  const remedying = store.remedyInjection(null, 6).map((w) => ({
+  // 双环四库 M2/M3 同源注入（D1①②）：只给过了验证闸门的补习焦点；
+  // 有活跃任务时按任务节点集交集过滤（D3：交集外的留全局池，不跟任务抢注意力）。
+  const taskNodes = store.activeTaskNodes()
+  const remedying = store.remedyInjection(taskNodes, 6).map((w) => ({
     node: w.node, subjectLabel: w.subject ? subjectLabel(w.subject) : '', confidence: w.confidence,
   }))
   const pendingWeak = store.listWeaknesses({ status: 'discovered', limit: 200 }).total
+  const headTask = store.listTasks({ status: 'active', limit: 1 }).tasks[0]
   apiMessages.unshift({ role: 'system', content: buildSystemPrompt((opts && opts.subject) || 'auto', {
     grade: prof.grade, region: prof.region, extra: cfg.systemPrompt, remedying, pendingWeak,
+    activeTask: headTask ? { goal: headTask.goal, nodes: headTask.nodes, readyToFinish: headTask.readyToFinish } : undefined,
   }) })
   const defs = createTools(store)
   const byName = new Map(defs.map((d) => [d.name, d]))
@@ -191,6 +194,7 @@ export function toolLabel(name, args) {
     case 'tutor_paper_import': return '解析电子资料'
     case 'tutor_teaching_guide': return '查讲解规范' + (a.subject ? '（' + a.subject + '）' : '')
     case 'tutor_weakness': return '弱点表·' + ({ list: '查看', verify: '抽查', remedy: '补习定稿', dismiss: '驳回' })[a.action] || ('弱点表·' + String(a.action || '操作'))
+    case 'tutor_task': return '任务环·' + ({ create: '建任务', submit: '交产出', grade: '评分列不足', finish: '定稿入复习库', list: '查看任务' })[a.action] || ('任务环·' + String(a.action || '操作'))
     default: return name || '工具'
   }
 }

@@ -158,9 +158,24 @@ export function remedyLines(ctx) {
 }
 
 /**
+ * 当前任务段（双环四库 M3 · A 环）：ctx.activeTask 由 App 端 store 备好（goal/nodes/readyToFinish）。
+ * @param {object} [ctx] { activeTask }。
+ * @returns {string[]} 0–1 条。
+ */
+export function taskLines(ctx) {
+  const t = ctx && ctx.activeTask !== null && typeof ctx.activeTask === 'object' ? ctx.activeTask : null
+  if (t === null || typeof t.goal !== 'string' || t.goal === '') return []
+  const nodes = Array.isArray(t.nodes) && t.nodes.length > 0 ? '（节点：' + t.nodes.slice(0, 6).join('、') + '）' : ''
+  const ready = t.readyToFinish === true
+    ? ' 该任务的不足清单已全部补习清零——提醒用户可以「确定完成」定稿；定稿权在用户（D4），只能提醒不能代批。'
+    : ' 学习安排向该任务倾斜；用户交产出后用 tutor_task grade 评分。'
+  return ['【当前任务】' + t.goal + nodes + '。补习优先覆盖任务节点与弱点表的交集；' + ready]
+}
+
+/**
  * 组装 App 端整段 system prompt。
  * @param {string} subject 六科键或 auto。
- * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak }——extra 为用户自定义提示词，永远追加在最后。
+ * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak, activeTask }——extra 为用户自定义提示词，永远追加在最后。
  * @returns {string} 拼装结果。
  */
 export function buildSystemPrompt(subject, ctx) {
@@ -169,6 +184,8 @@ export function buildSystemPrompt(subject, ctx) {
   parts.push(SUBJECT_PROMPTS[subject] !== undefined ? SUBJECT_PROMPTS[subject] : AUTO_HINT)
   const scene = contextLines(c)
   if (scene.length > 0) parts.push(scene.join('\n'))
+  const task = taskLines(c)
+  if (task.length > 0) parts.push(task.join('\n'))
   const remedy = remedyLines(c)
   if (remedy.length > 0) parts.push(remedy.join('\n'))
   if (typeof c.extra === 'string' && c.extra.trim() !== '') parts.push(c.extra.trim())
@@ -236,4 +253,18 @@ export const EXPLORE_COMPACT_PROMPT = [
   '· subject 只能填上面六个英文键之一；判不出学科时按对话主线学科记。',
   '各件长度上限：conclusion/stuckReplay 各 ≤300 字；chain ≤12 步；openBranches ≤8 条（用户明显感兴趣却没聊完的排前面）。',
   '对话太短、没有实质结论时：conclusion 写「未形成结论」，weaknesses 给 []——宁缺勿滥同样适用于档案本身。',
+].join('\n')
+
+/**
+ * 任务定稿提示词（A 环 · 双环四库 M3，06 篇 §2-A 末步）。用户点「确定完成」后一次
+ * 独立调用（src/ai/task.js），把任务过程蒸馏成入复习库排期的总结卡——「总结分析进复习库」。
+ */
+export const TASK_FINISH_PROMPT = [
+  '你是「高中助学」的任务档案员。用户刚点了「确定完成」，把一个学习任务定稿（A 环闭环最后一步）。',
+  '你的任务：把任务的目标、材料要求（A₁）、用户产出（A₂）、评分与已补习的不足（gaps），蒸馏成 2–6 张',
+  '值得三年反复复习的知识卡。只回复一个严格 JSON 对象：不带围栏、不夹解释、不增删字段。形状：',
+  '{"summary":"一两句话总结这个任务的收获（用户做到了什么的口径）",',
+  ' "cards":[{"subject":"math|physics|chemistry|english|chinese|geography","topic":"知识点（课本口径）","question":"卡片正面：独立成立的问题","answer":"卡片背面：核心答案","explanation":"为什么/易错点——优先来自用户真实犯过的错"}]}',
+  '规则：卡片必须从任务节点与 gaps 证据里提炼，「你哪里错了、怎么改对的」优先于「知识点百科」；',
+  'question 别抄整段题干，answer 要能独立复习；材料少时 2 张也够——宁缺勿滥。',
 ].join('\n')

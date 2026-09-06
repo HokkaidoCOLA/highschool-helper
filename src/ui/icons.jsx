@@ -38,3 +38,4 @@ export const IconMenu = (p) => <Svg {...p}><path d="M4 6.5h16M4 12h16M4 17.5h16"
 export const IconPlus = (p) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
 export const IconPen = (p) => <Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></Svg>
 export const IconTrash = (p) => <Svg {...p}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></Svg>
+export const IconTask = (p) => <Svg {...p}><rect x="5" y="4.5" width="14" height="17" rx="2.5" /><path d="M9.5 4.5V3.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.3" /><path d="M8.8 13.6l2.1 2.1 4.3-4.3" /></Svg>

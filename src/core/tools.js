@@ -7,7 +7,7 @@
 // 本程序按“无任何担保”发布，详见随包的 LICENSE 全文。
 
 /**
- * dsh-highschool-tutor — 模型可调工具（16 个；App 侧清单以本文件 return 数组为准）。
+ * dsh-highschool-tutor — 模型可调工具（17 个；App 侧清单以本文件 return 数组为准）。
  *
  * 设计原则：让「对话」成为最省力的录入与复习入口。你在会话里讲完一道错题，
  * 模型直接 tutor_add_items 写进错题本；你说「抽查我物理」，模型 tutor_review_deck
@@ -29,6 +29,7 @@
  *   tutor_paper_import  导入电子试卷/课件（docx/pptx/文本），自动切题并回填答案
  *   tutor_teaching_guide 取某科完整讲解规范（讲题顺序/必画图题型/登记要求）
  *   tutor_weakness      弱点注册表（双环四库 M2）：抽查验证 → 补习定稿入复习库 → 驳回
+ *   tutor_task          学习任务 A 环（M3）：create/submit/grade/finish/list，gaps 同源写弱点表
  *
  * 所有工具的返回值都是一段 JSON 字符串（含 summary 字段便于模型一眼读懂），
  * 参数 JSON Schema 只用 harness 支持的子集（type/properties/required/items/
@@ -1032,8 +1033,132 @@ export function createTools(store) {
         return { ok: false, error: 'action 需 list/verify/remedy/dismiss 之一' }
       },
     }),
+
+    // ── 17. 学习任务（双环四库 M3 · A 环闭环）──────────────────────────────
+    jsonTool({
+      name: 'tutor_task',
+      description: [
+        'A 环任务闭环：goal 驱动（作业/考试/整套题），材料 A₁ → 打标签+计划 → 学习 → 产出 A₂ → 评分列不足 → 补习回流 → 用户定稿入复习库。action：',
+        '· create {goal, subject?, nodes[], plan[], materials[]}：接到材料就建任务。nodes 是你给 A₁ 打的知识点标签（课本口径，不确定先查 tutor_syllabus）；plan 3–7 步；materials 摘录材料要点/题干原文。',
+        '· submit {id, deliverable}：用户交产出（作文正文/解题过程/背诵默写原文等），存为 A₂ 证据。',
+        '· grade {id, score?, full?, comment, gaps[{node,quote}]}：对 A₁×A₂ 做差当裁判。每条不足必须落一条弱点（写进弱点表 source=grade，与对话采集同一张表、同 node 交叉验证升置信）。',
+        '· finish {id, confirmedByUser:true, summary?, cards[{subject?,topic?,question,answer,explanation?}]}：定稿。仅当用户在界面上点了「确定完成」或在对话里明确说了定稿才准调，confirmedByUser 必须为 true（D4 定稿判定权在用户）。总结卡（1–6 张）入复习库排期。',
+        '· list {status?}：读任务表（active/done）。',
+        '用户交卷后先 submit 再 grade；评分后引导去「今日」页的补习队列逐个消灭 gap；gap 全清零时提醒用户可定稿——但只能提醒，不能代批。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['create', 'submit', 'grade', 'finish', 'list'], description: 'A 环动作' },
+          id: { type: 'string', description: '任务 id（tk_ 开头；create/list 之外必填）' },
+          goal: { type: 'string', description: '任务目标，一句话（如「搞定这 6 道导数大题，周五交」）' },
+          subject: { type: 'string', enum: SUBJECT_ENUM, description: '学科' },
+          nodes: { type: 'array', items: { type: 'string' }, description: '知识点标签（课本口径，≤12）' },
+          plan: { type: 'array', items: { type: 'string' }, description: '学习计划步骤（3–7 步）' },
+          materials: { type: 'array', items: { type: 'string' }, description: 'A₁ 材料：题干原文/要求摘录（≤20 段）' },
+          deliverable: { type: 'string', description: 'submit 的产出正文（A₂）' },
+          score: { type: 'number', description: '得分' },
+          full: { type: 'number', description: '满分（默认按分值口径自定）' },
+          comment: { type: 'string', description: '总评：亮点与主要问题' },
+          gaps: {
+            type: 'array',
+            description: '不足清单：每条一个 {node, quote}（quote 引产出里的原话证据）',
+            items: {
+              type: 'object',
+              properties: {
+                node: { type: 'string', description: '不足对应的知识点（课本口径）' },
+                quote: { type: 'string', description: '产出里的错误证据' },
+              },
+            },
+          },
+          confirmedByUser: { type: 'boolean', description: 'finish 必填 true：用户已点「确定完成」/明确口头定稿' },
+          summary: { type: 'string', description: 'finish 的任务总结（一两句）' },
+          cards: {
+            type: 'array',
+            description: 'finish 的定稿卡（1–6 张，从任务过程与已消灭的 gap 里提炼）',
+            items: {
+              type: 'object',
+              properties: {
+                subject: { type: 'string', enum: SUBJECT_ENUM, description: '缺省用任务学科' },
+                topic: { type: 'string', description: '知识点名，缺省用任务节点' },
+                question: { type: 'string' },
+                answer: { type: 'string' },
+                explanation: { type: 'string' },
+              },
+            },
+          },
+        },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const action = String(args.action || '')
+        if (action === 'create') {
+          const mats = Array.isArray(args.materials) ? args.materials : []
+          const nodes = Array.isArray(args.nodes) ? args.nodes : []
+          const plan = Array.isArray(args.plan) ? args.plan : []
+          if (String(args.goal || '').trim() === '') return { ok: false, error: 'create 需要 goal：一句话说清这个任务要搞定什么' }
+          if (mats.length === 0) return { ok: false, error: 'create 需要 materials（A₁）：把题目/要求原文摘录进来——拍照识别、试卷解析或用户粘贴的都行，没材料别建任务' }
+          if (nodes.length === 0) return { ok: false, error: 'create 需要 nodes：给材料打知识点标签（课本口径，可先 tutor_syllabus 查）' }
+          if (plan.length === 0) return { ok: false, error: 'create 需要 plan：给 3–7 步学习计划' }
+          const t = store.saveTask({ goal: args.goal, subject: args.subject, nodes, plan, materials: mats })
+          return {
+            ok: true, id: t.id, status: t.status,
+            summary: '任务「' + t.goal + '」已建（A₁ ' + mats.length + ' 份 · 节点：' + t.nodes.join('、') + ' · ' + t.plan.length + ' 步计划）',
+            plan: t.plan,
+            hint: '计划步骤的勾选在「任务」页由用户操作；学完一段提醒用户 submit 产出，你来 grade。',
+          }
+        }
+        const t = store.getTask(args.id)
+        if (t === null || t === undefined) return { ok: false, error: '找不到任务 id=' + String(args.id) + '，先 action=list 查表' }
+        if (action === 'submit') {
+          const body = String(args.deliverable || '').trim()
+          if (body === '') return { ok: false, error: 'submit 需要 deliverable：用户产出的正文（别替写，原样录入）' }
+          const up = store.addTaskDeliverable(t.id, body)
+          return { ok: true, id: t.id, deliverables: up.deliverables.length, summary: '产出已录入 A₂（第 ' + up.deliverables.length + ' 份）。对照 A₁ 要求评分：grade {score?, comment, gaps[]}。' }
+        }
+        if (action === 'grade') {
+          if (t.status !== 'active') return { ok: false, error: '任务已定稿（status=' + t.status + '），不再评分' }
+          const comment = String(args.comment || '').trim()
+          if (comment === '' && !Number.isFinite(Number(args.score))) return { ok: false, error: 'grade 至少给 comment（或 score）：总评是 A₁×A₂ 做差的结论' }
+          const before = store.listWeaknesses({}).total
+          const up = store.gradeTask(t.id, { score: args.score, full: args.full, comment }, Array.isArray(args.gaps) ? args.gaps : [])
+          const newGaps = up.gaps.filter((g) => !g.cleared).map((g) => ({ weaknessId: g.weaknessId, node: g.node }))
+          return {
+            ok: true, id: t.id, score: up.score, openGaps: newGaps.length,
+            summary: '评分入档。不足清单进弱点表（source=grade）' + (newGaps.length > 0 ? '：' + newGaps.map((g) => g.node).join('、') + '——已汇入补习队列，逐个讲透后用 tutor_weakness verify→remedy' : '：这次没抓到新不足'),
+            newGaps,
+          }
+        }
+        if (action === 'finish') {
+          if (args.confirmedByUser !== true) return { ok: false, error: 'D4 红线：定稿判定权在用户——只有用户点了「确定完成」或明确说了定稿，才允许带 confirmedByUser:true 调用' }
+          if (t.status !== 'active') return { ok: false, error: '任务已是 ' + t.status + '，无需重复定稿' }
+          const openGaps = (t.gaps ?? []).filter((g) => !g.cleared)
+          const cards = Array.isArray(args.cards) ? args.cards : []
+          if (cards.length === 0) return { ok: false, error: 'finish 需要 cards（1–6 张）：把这个任务值得长期复习的内容总结成精要问答卡——这就是「总结分析进复习库」' }
+          const r = store.finishTask(t.id, { summary: args.summary, cards })
+          if (r.task === null) return { ok: false, error: '定稿失败：' + r.errors.join('；') }
+          return {
+            ok: true, id: t.id, status: 'done', cardsIn: r.cards.length,
+            errors: r.errors.length > 0 ? r.errors : undefined,
+            openGaps: openGaps.length > 0 ? openGaps.map((g) => g.node) : undefined,
+            summary: '任务「' + t.goal + '」定稿，' + r.cards.length + ' 张总结卡已入复习库排期' + (openGaps.length > 0 ? '；注意：还有未清零的 gap（' + openGaps.map((g) => g.node).join('、') + '），用户选择提前收口' : ''),
+          }
+        }
+        if (action === 'list') {
+          const r = store.listTasks({ status: args.status, limit: args.limit })
+          return {
+            summary: r.total > 0 ? '任务 ' + r.total + ' 个：' + r.tasks.map((x) => x.id + ' ' + x.goal + '[' + x.status + (x.readyToFinish ? '/可定稿' : '') + ']').join('；') : '还没有学习任务——收到整套题/作业时主动建任务（create）',
+            total: r.total,
+            tasks: r.tasks.map((x) => ({ id: x.id, goal: x.goal, subject: x.subject, nodes: x.nodes, status: x.status, score: x.score, gaps: x.gaps, readyToFinish: x.readyToFinish, plan: x.plan })),
+          }
+        }
+        return { ok: false, error: 'action 需 create/submit/grade/finish/list 之一' }
+      },
+    }),
   ]
 }
+
 
 /** 各场景类型的示例标题（选型总览里给模型一个直观印象）。 */
 const EXAMPLE_TITLES = Object.fromEntries(exampleList().map((e) => [e.kind, e.title]))

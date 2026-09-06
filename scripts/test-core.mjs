@@ -272,6 +272,80 @@ ok('备份水合往返含新表', () => {
   assert.equal(s3.weaknessDb().weaknesses.length, 500)
 })
 
+console.log('\n⑥ 双环四库 M3：任务表（A 环）与补习回流')
+const t1 = s2.saveTask({ goal: '周五前搞定导数大题', subject: '数学', nodes: ['复合函数的求导法则', '导数与单调性'], plan: ['过一遍链式法则', '做 3 道例题', '整理错题'], materials: ['已知 f(x)=sin(x²)，求 f′(x)', '讨论 f 在 [0,π] 单调性'] })
+ok('saveTask：tk_ 前缀 + 学科归一 + active 起步', () => {
+  assert.ok(t1.id.startsWith('tk_'))
+  assert.equal(t1.subject, 'math')
+  assert.equal(t1.status, 'active')
+  assert.equal(t1.plan.length, 3)
+})
+ok('saveTask 拒空 goal', () => assert.equal(s2.saveTask({ goal: '  ' }), null))
+const pd = s2.setTaskPlanDone(t1.id, 0, true)
+ok('计划勾选（判定在用户界面）', () => {
+  assert.equal(pd.plan[0].done, true)
+  assert.equal(pd.plan[2].done, false)
+  assert.equal(s2.setTaskPlanDone(t1.id, 9, true), null)
+})
+s2.addTaskDeliverable(t1.id, '我的解法：f′=cos(x²)·2x，第一题对；第二题直接 cos 忘了乘内层')
+const g1 = s2.gradeTask(t1.id, { score: 72, full: 100, comment: '链式法则不稳，漏乘内层' }, [
+  { node: '复合函数的求导法则', quote: '第二题 f′ 直接写 cos' },
+  { node: '   ', quote: '空节点垃圾' },
+])
+ok('gradeTask：评分入档 + gaps 写弱点表 source=grade（空 node 拒）', () => {
+  assert.equal(g1.score.percent, 72)
+  assert.equal(g1.gaps.length, 1)
+  const w = s2.getWeakness(g1.gaps[0].weaknessId)
+  assert.equal(w.status, 'discovered')
+  assert.ok(w.sources.includes('grade'))
+})
+const gapW = s2.getWeakness(g1.gaps[0].weaknessId)
+ok('gap 弱点未清零前 readyToFinish=false', () => assert.equal(s2.getTask(t1.id).readyToFinish, false))
+s2.setWeaknessStatus(gapW.id, 'verifying', {})
+s2.setWeaknessStatus(gapW.id, 'remedying', { resolution: { kind: 'spotcheck', verdict: 'confirmed' } })
+ok('补习未定稿（remedying）不清 gap', () => assert.equal(s2.getTask(t1.id).gaps[0].cleared, false))
+s2.setWeaknessStatus(gapW.id, 'mastered', { itemId: 'it_00123' })
+ok('mastered 回流：gap 清零 + readyToFinish（D4 只提示不代办）', () => {
+  const t = s2.getTask(t1.id)
+  assert.equal(t.gaps[0].cleared, true)
+  assert.equal(t.gaps[0].clearedVia, 'mastered')
+  assert.equal(t.readyToFinish, true)
+})
+const nodes = s2.activeTaskNodes()
+ok('activeTaskNodes：活跃任务节点集（交集过滤数据源）', () => {
+  assert.ok(Array.isArray(nodes))
+  assert.ok(nodes.includes('复合函数的求导法则'))
+})
+const outside = s2.addWeakness({ subject: 'physics', node: '机械波', quote: 'q' })
+s2.setWeaknessStatus(outside.id, 'verifying', {})
+s2.setWeaknessStatus(outside.id, 'remedying', { resolution: { kind: 'spotcheck', verdict: 'confirmed' } })
+ok('交集过滤：任务外 remedying 留全局池不注入（D3）', () => {
+  const inj = s2.remedyInjection(s2.activeTaskNodes(), 8)
+  assert.ok(!inj.some((w) => w.id === outside.id))
+  assert.ok(s2.remedyInjection(null, 8).some((w) => w.id === outside.id))
+})
+const fr = s2.finishTask(t1.id, { summary: '搞定链式法则：外层导数乘内层导数', cards: [
+  { question: 'd/dx sin(x²)=?', answer: '2x·cos(x²)', explanation: '本次主错：漏乘内层 2x' },
+  { question: '', answer: '无效卡' },
+  { topic: '导数与单调性', question: 'f 递增的导数条件？', answer: 'f′≥0 且不恒为 0' },
+] })
+ok('finishTask：done + 有效卡入题库（无效卡跳过带 errors）', () => {
+  assert.equal(fr.task.status, 'done')
+  assert.equal(fr.cards.length, 2)
+  assert.equal(fr.errors.length, 1)
+  const cardRows = s2.db().items.filter((i) => String(i.source) === 'task:' + t1.id)
+  assert.equal(cardRows.length, 2)
+  assert.ok(cardRows.every((c) => c.kind === 'card' && c.srs.state === 'new'))
+})
+ok('定稿后 activeTaskNodes 归 null', () => assert.equal(s2.activeTaskNodes(), null))
+for (let i = 0; i < 105; i += 1) s2.saveTask({ goal: 't' + i }, 5000 + i)
+ok('tasks cap 100 丢最旧 + exportAll 覆盖', () => {
+  const rows = s2.taskDb().tasks
+  assert.equal(rows.length, 100)
+  assert.ok(s2.exportAll()['tasks.json'])
+  assert.equal(s2.exportAll()['tasks.json'].tasks.length, 100)
+})
+
 // ──  IDB 写语义（真机数据丢失事故防回归）：连接预热后，put 必须在调用同一任务内派发 ──
 const dispatched = []
 globalThis.indexedDB = {

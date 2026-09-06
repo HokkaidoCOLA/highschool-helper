@@ -924,3 +924,19 @@ body::before, body::after { opacity: var(--gv-blob); }
   border-radius: 999px; border: 1px solid var(--line); color: var(--fg2);
   background: var(--inset); white-space: nowrap;
 }
+/* ── M3 · 任务页（A 环最小 UI）与九页签 ─────────────────────────────────── */
+.appTabs.nine { grid-template-columns: repeat(9, 1fr); }
+.taskRow { border-bottom: 1px solid var(--line); padding: 10px 2px; }
+.taskRow:last-child { border-bottom: 0; }
+.taskGoal { font-weight: 700; font-size: 14.5px; }
+.readyChip { flex: none; font-size: 11px; color: #15803d; border: 1px solid rgba(21, 128, 61, .4); border-radius: 999px; padding: 2px 8px; }
+.planList { margin: 6px 0; }
+.planStep { display: flex; gap: 7px; align-items: center; font-size: 13px; padding: 2px 0; color: var(--fg2); }
+.planStep input { accent-color: var(--brand); }
+.planStep.doneStep { text-decoration: line-through; opacity: .55; }
+.gapList { margin: 6px 0; }
+.gapRow { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; }
+.gapRow .grow { flex: 1; min-width: 0; }
+.gapDone { opacity: .6; }
+.finishBtn { margin-top: 8px; }
+

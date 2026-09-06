@@ -9,7 +9,7 @@
 /**
  * dsh-highschool-tutor — 持久化数据层。
  *
- * App 版：八份 JSON 内容整体存放在浏览器 IndexedDB（库 hst-app / 表 files，键 = 文件名）：
+ * App 版：九份 JSON 内容整体存放在浏览器 IndexedDB（库 hst-app / 表 files，键 = 文件名）：
  *
  *   profile.json      学情设置：年级、高考日期、启用学科、每日目标
  *   items.json        题库：错题（mistake）与知识卡（card），含各自的复习状态
@@ -18,6 +18,7 @@
  *   exams.json        模考成绩：单科分/总分/排名，用于画趋势
  *   weaknesses.json   弱点注册表（双环四库 · 两环唯一汇点，M1 起）：对话被动采集 + 评分不足
  *   explorations.json 探索档案 B₂（M1 起）：冻结探索的四件套（结论/卡点回放/推理链/未探索分支）
+ *   tasks.json        学习任务（A 环，M3 起）：goal→材料 A₁→计划→产出 A₂→评分→补习→定稿
  *
  * 渲染前先 await store.load() 水合进内存缓存，业务方法保持与插件版一致的同步签名；
  * 写入即更新缓存并异步落盘（失败只告警），await store.flush() 可等待全部写完。
@@ -43,6 +44,7 @@ const FILES = {
   demos: 'demos.json',
   weaknesses: 'weaknesses.json',
   explorations: 'explorations.json',
+  tasks: 'tasks.json',
 }
 
 /** 复习流水保留条数上限（超出丢弃最旧的）。 */
@@ -56,6 +58,9 @@ const WEAKNESS_CAP = 500
 
 /** 探索档案上限（PLAN 拍板 200；档案只存四件套与元数据，transcript 留在会话本体——D2②）。 */
 const EXPLORATION_CAP = 200
+
+/** 任务表上限（A 环：活跃任务个位数，100 条滚动窗口足够装完成史）。 */
+const TASK_CAP = 100
 
 /**
  * 弱点状态机的合法迁移表（06 篇 §4）：discovered → verifying → remedying → mastered | invalid。
@@ -1076,6 +1081,25 @@ export class Store {
     }
     if (status === 'mastered' && text(opts.itemId, 40) !== '') w.itemId = text(opts.itemId, 40)
     this.write('weaknesses', db)
+    // 补习回流（M3）：弱点 mastered/invalid 即视为对应 task gap 解决；
+    // 全部 gap 清零 → readyToFinish——只「提示可定稿」，判定权在用户（D4）。
+    if (status === 'mastered' || status === 'invalid') {
+      const tdb = this.taskDb()
+      let touched = false
+      for (const task of tdb.tasks) {
+        if (task.status !== 'active' || !Array.isArray(task.gaps)) continue
+        let changed = false
+        for (const g of task.gaps) {
+          if (g.weaknessId === w.id && !g.cleared) { g.cleared = true; g.clearedVia = status; g.at = now; changed = true }
+        }
+        if (changed) {
+          task.readyToFinish = task.gaps.length > 0 && task.gaps.every((g) => g.cleared)
+          task.updatedAt = now
+          touched = true
+        }
+      }
+      if (touched) this.write('tasks', tdb)
+    }
     return w
   }
 
@@ -1120,6 +1144,213 @@ export class Store {
       dismissed: dismissed.length,
       dismissRate: enteredRemedy > 0 ? Math.round((dismissed.length / enteredRemedy) * 100) : null,
     }
+  }
+
+  // ── 学习任务（A 环：goal 驱动，M3）─────────────────────────────────────────
+  //
+  // 闭环：材料录入 A₁ → 打标签挂 node + 定计划 → 学习 → 产出导入 A₂ → 评分
+  // （gaps 写弱点表，与对话采集同源）→ 补习回流 → 用户点「确定完成」定稿总结卡入复习库。
+  // 数据流：A₁（要求）→ A₂（证据）→ 复习库（资产）；标签与评分是对 A₁×A₂ 做差的处理器。
+
+  /**
+   * 任务表文件。
+   * @returns {{version: number, seq: number, tasks: object[]}} 任务集合。
+   */
+  taskDb() {
+    const raw = this.read('tasks', () => ({ version: 1, seq: 0, tasks: [] }))
+    if (!Array.isArray(raw.tasks)) raw.tasks = []
+    if (!Number.isFinite(raw.seq)) raw.seq = raw.tasks.length
+    return raw
+  }
+
+  /**
+   * 新增/更新一个学习任务（传 id 更新）。字段都可选，缺省沿用旧值。
+   * @param {object} t { id?, goal, subject?, nodes?[], plan?[], materials?[], status? }。
+   *   plan 项 = 字符串或 {text, done}；materials 为 A₁ 材料摘要（图片传描述/识别文本，存本机）。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 记录；goal 为空且非更新时拒录。
+   */
+  saveTask(t, now = Date.now()) {
+    const db = this.taskDb()
+    const existing = typeof t?.id === 'string' && t.id !== ''
+      ? db.tasks.find((x) => x.id === t.id) ?? null
+      : null
+    const goal = t?.goal !== undefined ? text(t.goal, 200) : existing?.goal ?? ''
+    if (existing === null && goal === '') return null
+    const normStrings = (v, cap, max) => (Array.isArray(v) ? v.map((s) => text(s, cap)).filter((s) => s !== '').slice(0, max) : null)
+    const record = {
+      id: existing?.id ?? 'tk_' + String(db.seq + 1).padStart(4, '0'),
+      goal,
+      subject: t?.subject !== undefined ? (toSubject(t.subject) ?? null) : existing?.subject ?? null,
+      nodes: normStrings(t?.nodes, 80, 12) ?? existing?.nodes ?? [],
+      plan: t?.plan !== undefined
+        ? t.plan.slice(0, 10).map((p) => (typeof p === 'string'
+          ? { text: text(p, 200), done: false }
+          : { text: text(p?.text, 200), done: Boolean(p?.done) })).filter((p) => p.text !== '')
+        : existing?.plan ?? [],
+      materials: t?.materials !== undefined
+        ? (normStrings(t.materials, 600, 20) ?? []).map((m) => ({ quote: m, at: now }))
+        : existing?.materials ?? [],
+      deliverables: existing?.deliverables ?? [],
+      score: existing?.score ?? null,
+      gaps: existing?.gaps ?? [],
+      readyToFinish: existing?.readyToFinish ?? false,
+      status: ['active', 'done'].includes(t?.status) ? t.status : existing?.status ?? 'active',
+      summary: t?.summary !== undefined ? text(t.summary, 600) : existing?.summary ?? '',
+      cardIds: existing?.cardIds ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      doneAt: existing?.doneAt ?? null,
+    }
+    const idx = db.tasks.findIndex((x) => x.id === record.id)
+    if (idx >= 0) db.tasks[idx] = record
+    else { db.seq += 1; db.tasks.push(record) }
+    if (db.tasks.length > TASK_CAP) {
+      db.tasks.sort((a, b) => a.updatedAt - b.updatedAt)
+      db.tasks = db.tasks.slice(db.tasks.length - TASK_CAP)
+    }
+    this.write('tasks', db)
+    return record
+  }
+
+  /**
+   * 按 id 取任务。
+   * @param {string} id 任务 id。
+   * @returns {object|null} 任务。
+   */
+  getTask(id) {
+    return this.taskDb().tasks.find((x) => x.id === id) ?? null
+  }
+
+  /**
+   * 任务列表（活跃在前、更新时间倒序）。
+   * @param {object} [filter] { status, limit }。
+   * @returns {{total: number, tasks: object[]}} 结果。
+   */
+  listTasks(filter = {}) {
+    const status = text(filter.status, 10)
+    let rows = this.taskDb().tasks.filter((x) => status === '' || x.status === status)
+    rows = rows.slice().sort((a, b) => ((a.status === 'active' ? 1 : 0) - (b.status === 'active' ? 1 : 0)) || (b.updatedAt - a.updatedAt))
+    const total = rows.length
+    const limit = Number.isFinite(filter.limit) ? Math.min(100, Math.max(1, Math.trunc(filter.limit))) : 30
+    return { total, tasks: rows.slice(0, limit) }
+  }
+
+  /**
+   * 活跃任务的节点并集（D1② 交集过滤的数据源；无任务返回 null = 走全局池）。
+   * @returns {string[]|null} nodes 并集或 null。
+   */
+  activeTaskNodes() {
+    const act = this.taskDb().tasks.filter((x) => x.status === 'active')
+    if (act.length === 0) return null
+    const out = []
+    for (const t of act) for (const n of t.nodes ?? []) if (n && !out.includes(n)) out.push(n)
+    return out
+  }
+
+  /**
+   * 勾选计划步骤。
+   * @param {string} id 任务 id。@param {number} index 步骤下标。@param {boolean} done 完成与否。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 任务；越界/不存在 null。
+   */
+  setTaskPlanDone(id, index, done, now = Date.now()) {
+    const db = this.taskDb()
+    const t = db.tasks.find((x) => x.id === id) ?? null
+    if (t === null || !Number.isInteger(index) || index < 0 || index >= t.plan.length) return null
+    t.plan[index] = { ...t.plan[index], done: Boolean(done) }
+    t.updatedAt = now
+    this.write('tasks', db)
+    return t
+  }
+
+  /**
+   * 导入一份任务产出（A₂）。
+   * @param {string} id 任务 id。@param {string} body 产出文本/描述。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 任务。
+   */
+  addTaskDeliverable(id, body, now = Date.now()) {
+    const db = this.taskDb()
+    const t = db.tasks.find((x) => x.id === id) ?? null
+    if (t === null) return null
+    const quote = text(body, 2000)
+    if (quote === '') return t
+    t.deliverables.push({ text: quote, at: now })
+    if (t.deliverables.length > 20) t.deliverables = t.deliverables.slice(-20)
+    t.updatedAt = now
+    this.write('tasks', db)
+    return t
+  }
+
+  /**
+   * 评分（A₁×A₂ 做差的裁判动作）：写分数并给每条不足登记弱点（source='grade'——
+   * 与对话采集同一张表，同 node 命中即交叉验证升置信，D1③）。
+   * @param {string} id 任务 id。
+   * @param {object} grade { score, full?, comment? }。
+   * @param {Array<{node, quote?}>} [gaps] 不足清单。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 评分后的任务。
+   */
+  gradeTask(id, grade, gaps, now = Date.now()) {
+    const db = this.taskDb()
+    const t = db.tasks.find((x) => x.id === id) ?? null
+    if (t === null) return null
+    const value = Number.isFinite(Number(grade?.score)) ? Number(grade.score) : null
+    const full = Number.isFinite(Number(grade?.full)) && Number(grade.full) > 0 ? Number(grade.full) : null
+    t.score = value === null ? null : {
+      value, full,
+      percent: full !== null ? Math.round((value / full) * 1000) / 10 : null,
+      comment: text(grade?.comment, 300), at: now,
+    }
+    for (const g of Array.isArray(gaps) ? gaps.slice(0, 8) : []) {
+      const node = text(g?.node, 80)
+      if (node === '') continue
+      const w = this.addWeakness({
+        subject: t.subject, node, quote: text(g?.quote, 200), src: 'task:' + t.id, source: 'grade',
+      })
+      if (w === null) continue
+      if (!t.gaps.some((x) => x.weaknessId === w.id)) t.gaps.push({ weaknessId: w.id, node: w.node, cleared: false })
+    }
+    t.readyToFinish = t.status === 'active' && t.gaps.length > 0 && t.gaps.every((x) => x.cleared)
+    t.updatedAt = now
+    this.write('tasks', db)
+    return t
+  }
+
+  /**
+   * 定稿（「确定完成」的落库动作，D4 判定权在用户）：总结生成知识卡入复习库排期，任务收口。
+   * @param {string} id 任务 id。
+   * @param {object} out { summary, cards: [{subject?, question, answer, explanation?}] }。
+   * @param {number} [now] 当前时间戳。
+   * @returns {{task: object|null, cards: string[], errors: string[]}} 结果。
+   */
+  finishTask(id, out, now = Date.now()) {
+    const db = this.taskDb()
+    const t = db.tasks.find((x) => x.id === id) ?? null
+    if (t === null) return { task: null, cards: [], errors: ['找不到任务 ' + String(id)] }
+    const cards = []
+    const errors = []
+    for (const c of (Array.isArray(out?.cards) ? out.cards.slice(0, 6) : [])) {
+      const question = text(c?.question, 1200)
+      const answer = text(c?.answer, 1200)
+      if (question === '' || answer === '') { errors.push('卡片缺 question/answer，已跳过'); continue }
+      const subject = toSubject(c?.subject) ?? t.subject
+      if (subject === null) { errors.push('卡片无学科且任务未定学科，已跳过'); continue }
+      cards.push({
+        subject, kind: 'card', topic: text(c?.topic, 60) || t.nodes[0] || t.goal.slice(0, 20),
+        question, answer, explanation: text(c?.explanation, 1200), tags: ['任务定稿'],
+        source: 'task:' + t.id, seedKey: 'task:' + t.id + ':' + cards.length,
+      })
+    }
+    const up = this.upsertItems(cards, now)
+    t.status = 'done'
+    t.doneAt = now
+    t.summary = text(out?.summary, 600)
+    t.cardIds = up.items.map((x) => x.id)
+    t.updatedAt = now
+    this.write('tasks', db)
+    return { task: t, cards: up.added.concat(up.updated), errors }
   }
 
   // ── 汇总视图 ──────────────────────────────────────────────────────────────
@@ -1231,8 +1462,8 @@ export class Store {
         streak: this.streak(now),
       },
       weakTopics: this.weakTopics(6, now),
-      // 补习队列（M2）：过了验证闸门的弱点，置信度降序；只给视图字段，证据留在表里
-      remedyQueue: this.remedyInjection(null, 8).map((w) => ({ id: w.id, subject: w.subject, node: w.node, confidence: w.confidence, sources: w.sources })),
+      // 补习队列（M2/M3）：过了验证闸门的弱点，置信度降序，有活跃任务时按节点交集过滤；只给视图字段，证据留在表里
+      remedyQueue: this.remedyInjection(this.activeTaskNodes(), 8).map((w) => ({ id: w.id, subject: w.subject, node: w.node, confidence: w.confidence, sources: w.sources })),
       weakStats: this.weaknessStats(),
       recentExams: exams.slice(-3),
     }
@@ -1302,6 +1533,7 @@ export class Store {
       [FILES.demos]: this.demoDb(),
       [FILES.weaknesses]: this.weaknessDb(),
       [FILES.explorations]: this.explorationDb(),
+      [FILES.tasks]: this.taskDb(),
     }
   }
 

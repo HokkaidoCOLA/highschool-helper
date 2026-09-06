@@ -109,7 +109,7 @@ APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；�
 
 ## 导航
 
-底部八页：**聊天**（默认）· 今日 · 复习 · 题库 · 演示 · 资料 · 统计 · 设置。
+底部九页：**聊天**（默认）· 任务 · 今日 · 复习 · 题库 · 演示 · 资料 · 统计 · 设置。
 
 ## 从 DSH 插件迁移数据
 
@@ -141,7 +141,7 @@ APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；�
 src/core/       核心逻辑（移植自已退役插件，只在本仓库维护；含 tools.js 15 个工具）+ idb.js / bytes.js
 src/ai/         llm.js —— OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止
 src/engine/     演示引擎四件套（复制）+ boot.js（共享 Player 装载、键盘守卫、主题变量）
-src/ui/         七页：今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置
+src/ui/         九页：聊天 / 任务（A 环）/ 今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置
 src/state.js    store 单例 + 数据变更总线
 public/         manifest / sw.js / 图标（scripts/gen-icons.mjs 纯 node 生成）
 scripts/        sync · test-core · test-ui · gen-icons · gen-ico · build-apk · fixtures

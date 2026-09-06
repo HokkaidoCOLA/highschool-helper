@@ -13,6 +13,7 @@ import Settings from '../src/ui/Settings.jsx'
 import App from '../src/ui/App.jsx'
 import Chat from '../src/ui/Chat.jsx'
 import ConvDrawer from '../src/ui/ConvDrawer.jsx'
+import Tasks from '../src/ui/Tasks.jsx'
 
 let passed = 0
 const failures = []
@@ -38,6 +39,14 @@ const { EXAMPLES } = await import('../src/core/examples.js')
 const { normalizeScene, sceneSummary, keySteps } = await import('../src/core/scene.js')
 const s = normalizeScene(EXAMPLES.plot2d)
 store.saveDemo({ title: s.scene.title, kind: 'plot2d', subject: 'math', topic: s.scene.topic, summary: sceneSummary(s.scene), keySteps: keySteps(s.scene), scene: s.scene })
+
+// M3：一个带 gap 的活跃任务 + 一条任务外 remedying 弱点，Tasks/Today 页要有渲染面
+const tkSeed = store.saveTask({ goal: '导数任务渲染', subject: 'math', nodes: ['复合函数求导'], plan: ['过一遍链式法则'], materials: ['f(x)=sin(x²) 求 f′'] })
+store.addTaskDeliverable(tkSeed.id, '我忘乘内层了')
+store.gradeTask(tkSeed.id, { score: 60, full: 100, comment: '链式不稳' }, [{ node: '复合函数求导', quote: '忘乘内层' }])
+const wkOut = store.addWeakness({ subject: 'physics', node: '机械波', quote: '画不出波形' })
+store.setWeaknessStatus(wkOut.id, 'verifying', {})
+store.setWeaknessStatus(wkOut.id, 'remedying', { resolution: { kind: 'spotcheck', verdict: 'confirmed' } })
 
 // M2：来一条过了验证闸门的弱点，Today 补习队列必须有渲染面
 const wkSeed = store.addWeakness({ subject: 'math', node: '复合函数求导', quote: '卡壳' })
@@ -72,6 +81,9 @@ const checks = [
   ['会话抽屉·↪ 前缀', <ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} />, '↪'],
   ['今日页·补习队列', <Today goReview={() => {}} />, '补习队列'],
   ['今日页·这不相关按钮', <Today goReview={() => {}} />, '这不相关'],
+  ['任务页·定稿按钮', <Tasks />, '确定完成'],
+  ['任务页·计划与 gap', <Tasks />, '过一遍链式法则'],
+  ['App 外壳·任务页签', <App />, '高中助学'],
 ]
 for (const [label, node, needle] of checks) {
   try {
