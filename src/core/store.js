@@ -1132,6 +1132,8 @@ export class Store {
     const srcOf = (w) => (Array.isArray(w.sources) ? w.sources : [w.source])
     const spotchecked = rows.filter((w) => w.resolution?.kind === 'spotcheck')
     const dismissed = rows.filter((w) => w.resolution?.kind === 'dismiss')
+    // 翻案（M4）：第二代探索带证据推翻第一代误报——resolution.kind=overturn
+    const overturned = rows.filter((w) => w.resolution?.kind === 'overturn')
     const enteredRemedy = dismissed.length + (byStatus.remedying ?? 0) + (byStatus.mastered ?? 0)
     return {
       total: rows.length,
@@ -1143,6 +1145,7 @@ export class Store {
         : null,
       dismissed: dismissed.length,
       dismissRate: enteredRemedy > 0 ? Math.round((dismissed.length / enteredRemedy) * 100) : null,
+      overturned: overturned.length,
     }
   }
 

@@ -108,7 +108,8 @@ const MAX_TOOL_ROUNDS = 10
  * @param {object[]} apiMessages 会话消息数组（原地追加，下轮复用；system 头每轮重建）。
  * @param {(ev: object) => void} [onEvent] 过程事件 {type:'tool', name, phase, label, ok, error, meta}。
  * @param {AbortSignal} [signal] 「停止」按钮的中止信号。
- * @param {object} [opts] { subject }——本会话锁定的学科（'auto' 或六科键）。
+ * @param {object} [opts] { subject, archive }——subject 本会话锁定的学科（'auto' 或六科键）；
+ *   archive 第二代探索的继承视图（src/ai/session.js archiveView 产出）。
  * @returns {Promise<string>} 最终文本。
  */
 export async function runAssistant(apiMessages, onEvent, signal, opts) {
@@ -128,6 +129,7 @@ export async function runAssistant(apiMessages, onEvent, signal, opts) {
   apiMessages.unshift({ role: 'system', content: buildSystemPrompt((opts && opts.subject) || 'auto', {
     grade: prof.grade, region: prof.region, extra: cfg.systemPrompt, remedying, pendingWeak,
     activeTask: headTask ? { goal: headTask.goal, nodes: headTask.nodes, readyToFinish: headTask.readyToFinish } : undefined,
+    archive: opts && opts.archive ? opts.archive : undefined,
   }) })
   const defs = createTools(store)
   const byName = new Map(defs.map((d) => [d.name, d]))
@@ -195,6 +197,7 @@ export function toolLabel(name, args) {
     case 'tutor_teaching_guide': return '查讲解规范' + (a.subject ? '（' + a.subject + '）' : '')
     case 'tutor_weakness': return '弱点表·' + ({ list: '查看', verify: '抽查', remedy: '补习定稿', dismiss: '驳回' })[a.action] || ('弱点表·' + String(a.action || '操作'))
     case 'tutor_task': return '任务环·' + ({ create: '建任务', submit: '交产出', grade: '评分列不足', finish: '定稿入复习库', list: '查看任务' })[a.action] || ('任务环·' + String(a.action || '操作'))
+    case 'tutor_explore': return '探索档案·' + ({ list: '查看', resume: '复活读取' })[a.action] || ('探索档案·' + String(a.action || '操作'))
     default: return name || '工具'
   }
 }

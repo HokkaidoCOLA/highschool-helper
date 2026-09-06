@@ -9,7 +9,7 @@
 import React from 'react'
 import { store, notify } from '../state.js'
 import { aiReady, loadAiConfig } from '../ai/llm.js'
-import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject, forkConversation } from '../ai/session.js'
+import { getSession, subscribeSession, sendUser, stopUser, clearSession, setDraftText, addDraftImage, removeDraftImage, pushItem, newConversation, switchConversation, renameConversation, deleteConversation, setConversationSubject, forkConversation, resumeFromExploration } from '../ai/session.js'
 import { freezeExploration } from '../ai/explore.js'
 import { extractText } from '../core/docs.js'
 import { parseStudyText } from '../core/paper.js'
@@ -197,6 +197,12 @@ export default function Chat({ goSettings }) {
   const forkFrom = (itemId) => {
     if (forkConversation(s.activeId, itemId) === null) pushItem({ kind: 'notice', text: '这条消息没法分叉（可能已被删除）' })
   }
+  // 🌱 再开一轮（M4）：从冻结会话的最新 B₂ 档案起第二代（不重放 transcript）
+  const resumeConv = (conv) => {
+    const rec = store.listExplorations({ convId: conv.id, limit: 1 }).explorations[0]
+    if (rec === undefined || rec === null) { window.alert('这轮还没有归档（❄ 冻结归档后才能复活）'); return }
+    resumeFromExploration(conv.id, rec.id)
+  }
 
   const keyDown = (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !/iPhone|Android/i.test(navigator.userAgent)) { ev.preventDefault(); send() } }
 
@@ -212,6 +218,7 @@ export default function Chat({ goSettings }) {
             onSwitch={switchConversation}
             onRename={renameConversation}
             onDelete={deleteConversation}
+            onResume={resumeConv}
           />
         </div>
         <div className="chatMain">
@@ -229,8 +236,11 @@ export default function Chat({ goSettings }) {
         <div className="chatTopTitle">{(s.convs.find((c) => c.id === s.activeId) || { title: '新对话' }).title}</div>
         {active !== null && active.kind === 'exploration' ? (
           active.frozen === true
-            ? <span className="frozenBadge" title="本轮已冻结归档：只读留档，想续可从任意消息 🌱 再分叉">❄ 已冻结</span>
+            ? <span className="frozenBadge" title="本轮已冻结归档：只读留档，想续点右边再开一轮">❄ 已冻结</span>
             : <button type="button" className="btn sm freezeBtn" title="封口并归档：AI 压出四件套（结论/卡点回放/推理链/未探索分支），采到的弱点入表待验证" onClick={() => { freezeExploration(active.id) }}>❄ 这轮完了</button>
+        ) : null}
+        {active !== null && active.frozen === true ? (
+          <button type="button" className="btn sm" title="从本轮四件套档案起第二代探索：档案注入 system、不重放原对话，原会话保持只读" onClick={() => resumeConv(active)}>🌱 再开一轮</button>
         ) : null}
         <button type="button" className="iconBtn flat" title="新对话" onClick={newConversation}><IconPlus /></button>
       </div>
@@ -321,6 +331,7 @@ export default function Chat({ goSettings }) {
         onSwitch={switchConversation}
         onRename={renameConversation}
         onDelete={deleteConversation}
+        onResume={resumeConv}
       />
       {modal !== null ? <DemoModal meta={modal} onClose={() => setModal(null)} /> : null}
     </div>

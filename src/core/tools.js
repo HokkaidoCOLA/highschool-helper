@@ -7,7 +7,7 @@
 // 本程序按“无任何担保”发布，详见随包的 LICENSE 全文。
 
 /**
- * dsh-highschool-tutor — 模型可调工具（17 个；App 侧清单以本文件 return 数组为准）。
+ * dsh-highschool-tutor — 模型可调工具（18 个；App 侧清单以本文件 return 数组为准）。
  *
  * 设计原则：让「对话」成为最省力的录入与复习入口。你在会话里讲完一道错题，
  * 模型直接 tutor_add_items 写进错题本；你说「抽查我物理」，模型 tutor_review_deck
@@ -30,6 +30,7 @@
  *   tutor_teaching_guide 取某科完整讲解规范（讲题顺序/必画图题型/登记要求）
  *   tutor_weakness      弱点注册表（双环四库 M2）：抽查验证 → 补习定稿入复习库 → 驳回
  *   tutor_task          学习任务 A 环（M3）：create/submit/grade/finish/list，gaps 同源写弱点表
+ *   tutor_explore       探索档案 B₂（M4）：list 查档 / resume 从四件套复活（会话内变体）
  *
  * 所有工具的返回值都是一段 JSON 字符串（含 summary 字段便于模型一眼读懂），
  * 参数 JSON Schema 只用 harness 支持的子集（type/properties/required/items/
@@ -937,7 +938,7 @@ export function createTools(store) {
         '· verify {id}：开抽查（discovered→verifying）。随后你只出 1 道最能区分「真会不会」的诊断题（只给题干，不附答案、不顺手讲解），等用户文字作答。',
         '· verify {id, verdict, rationale, answer}：用户作答后判案。confirmed=答案暴露确实不会（进补习队列）；false_positive=用户其实掌握、当年是误报（判 invalid）。以答案质量为准，宁缺勿滥。',
         '· remedy {id, card{question,answer,explanation?,subject?}}：补习到位且用户确认掌握后判 mastered，同时生成一张该节点的精要问答卡入复习库排期（seedKey 幂等，重复定稿不会录两遍）。',
-        '· dismiss {id, note?}：用户说这条不相关/记错了，判 invalid——驳回与翻案的判定权在用户，不要劝阻。',
+        '· dismiss {id, note?, overturn?}：用户说这条不相关/记错了，判 invalid；第二代探索证明上一代误报时带 overturn:true（翻案也是采集）。判定权在用户，不要劝阻。',
         '状态机只认合法迁移（discovered→verifying→remedying→mastered|invalid），被拒时按返回的 allowed 列表走下一步。',
       ].join('\n'),
       parameters: {
@@ -951,7 +952,8 @@ export function createTools(store) {
           verdict: { type: 'string', enum: ['confirmed', 'false_positive'], description: 'verify 判案结论' },
           rationale: { type: 'string', description: '判案依据（引用用户答案里的关键证据，≤120 字）' },
           answer: { type: 'string', description: '用户作答原文（判案时带上，留证据）' },
-          note: { type: 'string', description: 'dismiss 的用户理由' },
+          note: { type: 'string', description: 'dismiss 的理由/证据' },
+          overturn: { type: 'boolean', description: 'dismiss 专用：true=第二代探索翻案第一代误报（resolution.kind=overturn）' },
           card: {
             type: 'object',
             description: 'remedy 必填的定稿卡：该节点讲成一张能独立复习的精要问答',
@@ -1023,9 +1025,10 @@ export function createTools(store) {
         }
         if (action === 'dismiss') {
           if (w.status === 'mastered' || w.status === 'invalid') return why('dismiss')
+          const kind = args.overturn === true ? 'overturn' : 'dismiss'
           const upd = store.setWeaknessStatus(w.id, 'invalid', {
-            resolution: { kind: 'dismiss', verdict: 'irrelevant', note: args.note },
-            evidence: { src: 'dismiss', quote: String(args.note || '用户驳回：这不相关') },
+            resolution: { kind, verdict: 'false_positive', note: args.note },
+            evidence: { src: kind, quote: String(args.note || (kind === 'overturn' ? '第二代探索翻案：当时是误报' : '用户驳回：这不相关')) },
           })
           if (upd === null) return { ok: false, error: '流转被状态机拒绝' }
           return { ok: true, id: upd.id, status: 'invalid', summary: '已按用户意见判 invalid（H4 驳回数据已采）' }
@@ -1154,6 +1157,61 @@ export function createTools(store) {
           }
         }
         return { ok: false, error: 'action 需 create/submit/grade/finish/list 之一' }
+      },
+    }),
+
+    // ── 18. 探索档案（双环四库 M4 · B₂ 复活入口的会话内变体）────────────────
+    jsonTool({
+      name: 'tutor_explore',
+      description: [
+        '探索档案（B₂）只读入口。fork/冻结归档由界面按钮驱动（🌱 探索 / ❄ 这轮完了），本工具负责「查档」与「本会话内复活」：',
+        '· list {subject?, convId?, limit?}：档案目录（含降级标记）。',
+        '· resume {id}：读出四件套（结论/卡点回放/推理链/未探索分支）+ 当年弱点的现状——随后按档案继续聊，别从头再讲。',
+        '真正的第二代独立会话请引导用户点冻结会话上的「🌱 再开一轮」（那会把档案注入新会话的 system，不重放对话）。',
+        '第二代发现上一代误报的弱点时，用 tutor_weakness dismiss 带 overturn:true 翻案留证据。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'resume'], description: '查档 / 复活' },
+          id: { type: 'string', description: '档案 id（ep_ 开头；resume 必填）' },
+          subject: { type: 'string', enum: SUBJECT_ENUM, description: 'list 过滤：学科' },
+          convId: { type: 'string', description: 'list 过滤：来源会话' },
+          limit: { type: 'integer', description: 'list 条数上限（默认 40）' },
+        },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const action = String(args.action || '')
+        if (action === 'list') {
+          const r = store.listExplorations({ subject: args.subject, convId: args.convId, limit: args.limit })
+          return {
+            summary: r.total > 0 ? '档案 ' + r.total + ' 份：' + r.explorations.map((e) => e.id + ' ' + (e.title || e.convId) + (e.degraded ? '（降级档）' : '「' + String((e.compact && e.compact.conclusion) || '').slice(0, 24) + '…」')) .join('；') : '还没有探索档案——用户在对话里点 🌱 分叉探索、聊完点 ❄ 冻结后就会产出',
+            total: r.total,
+            explorations: r.explorations.map((e) => ({ id: e.id, title: e.title, subject: e.subject, gen: e.gen, degraded: e.degraded, conclusion: e.compact ? e.compact.conclusion : '', convId: e.convId, updatedAt: e.updatedAt })),
+          }
+        }
+        if (action === 'resume') {
+          const e = store.getExploration(args.id)
+          if (e === null || e === undefined) return { ok: false, error: '找不到档案 id=' + String(args.id) + '，先 list 查目录' }
+          if (e.degraded === true) {
+            return { ok: true, id: e.id, degraded: true, summary: '该档案是降级档（上一轮归档失败，只有会话记录）——本轮按新探索处理，但开场先问用户上次聊到了哪里。', convId: e.convId }
+          }
+          const weaknesses = (e.weaknessIds || []).map((wid) => {
+            const w = store.getWeakness(wid)
+            return w === null || w === undefined ? { id: wid, gone: true } : { id: w.id, node: w.node, status: w.status, confidence: w.confidence }
+          })
+          return {
+            ok: true, id: e.id, title: e.title, subject: e.subject, gen: e.gen,
+            archive: e.compact,
+            weaknesses,
+            instruction: '从档案接续：结论已达成（别复述），从 stuckReplay 的坑或 openBranches 的未探索分支起问；'
+              + '发现某条上代弱点实为误报（用户当时就会），用 tutor_weakness dismiss{overturn:true} 翻案并附证据；'
+              + '若用户想要独立第二代会话，提示点该会话头部或抽屉里的「🌱 再开一轮」。',
+          }
+        }
+        return { ok: false, error: 'action 需 list/resume 之一' }
       },
     }),
   ]

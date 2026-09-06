@@ -67,6 +67,7 @@ function persist(c) {
       forkFrom: c.forkFrom !== null && typeof c.forkFrom === 'object' ? c.forkFrom : null,
       gen: Number.isFinite(c.gen) ? Math.trunc(c.gen) : 0,
       frozen: c.frozen === true,
+      fromExploration: typeof c.fromExploration === 'string' ? c.fromExploration : null,
       items: c.items, apiMessages: c.apiMessages,
     }
     convSet(c.id, JSON.stringify(slim)).catch(() => {})
@@ -94,6 +95,7 @@ export async function loadConversations() {
         forkFrom: c.forkFrom !== null && typeof c.forkFrom === 'object' ? c.forkFrom : null,
         gen: Number.isFinite(c.gen) ? Math.max(0, Math.trunc(c.gen)) : 0,
         frozen: c.frozen === true,
+        fromExploration: typeof c.fromExploration === 'string' ? c.fromExploration : null,
         items: Array.isArray(c.items) ? c.items : [],
         apiMessages: Array.isArray(c.apiMessages) ? c.apiMessages : [],
         busy: false, abort: null,
@@ -118,7 +120,7 @@ export function newConversation() {
     id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
     title: '新对话', createdAt: Date.now(), updatedAt: Date.now(),
     items: [], apiMessages: [], subject: 'auto', busy: false, abort: null,
-    kind: 'chat', parentId: null, forkFrom: null, gen: 0, frozen: false,
+    kind: 'chat', parentId: null, forkFrom: null, gen: 0, frozen: false, fromExploration: null,
   }
   state = { ...state, convs: [c, ...state.convs], activeId: c.id }
   emit()
@@ -206,6 +208,59 @@ export function freezeConversation(id, frozen = true) {
   persist(c)
   emit()
   return c
+}
+
+/**
+ * 从 B₂ 档案复活第二代探索（M4 · tutor_explore.resume 的会话层动作）：
+ * 新会话挂在冻结的第一代之下（森林按代际分层），**不重放 transcript**——
+ * 四件套经 fromExploration 在每次发送时注入 system（archiveLines），聊的是继承。
+ * @param {string} parentConvId 冻结的第一代会话 id。
+ * @param {string} explorationId 档案 id（explorations.json）。
+ * @returns {object|null} 新会话；母会话不存在时 null。
+ */
+export function resumeFromExploration(parentConvId, explorationId) {
+  const parent = state.convs.find((x) => x.id === parentConvId)
+  if (parent === undefined || parent === null) return null
+  convSeq += 1
+  const siblings = state.convs.filter((x) => x.parentId === parent.id).length
+  const c = {
+    id: 'cv_' + Date.now().toString(36) + '_' + convSeq,
+    title: String(parent.title || '探索').slice(0, 16) + (siblings > 0 ? ' · 再探 ' + (siblings + 1) : ' · 第二代'),
+    createdAt: Date.now(), updatedAt: Date.now(),
+    subject: parent.subject,
+    kind: 'exploration', parentId: parent.id,
+    forkFrom: { explorationId, fromArchive: true },
+    gen: (Number.isFinite(parent.gen) ? parent.gen : 0) + 1,
+    frozen: false, fromExploration: explorationId,
+    items: [{ id: ++uid, kind: 'notice', apiLen: 0, text: '🌱 第二代探索：从档案 ' + explorationId + ' 继承（四件套注入 system，不重放上一轮对话）。' }],
+    apiMessages: [],
+    busy: false, abort: null,
+  }
+  state = { ...state, convs: [c, ...state.convs], activeId: c.id }
+  emit()
+  persist(c)
+  return c
+}
+
+/** 会话 → 注入用档案视图（四件套 + 弱点节点现状；M4 archiveLines 的数据源）。 */
+export function archiveView(conv) {
+  if (conv === null || conv === undefined || typeof conv.fromExploration !== 'string' || conv.fromExploration === '') return null
+  const rec = store.getExploration(conv.fromExploration)
+  if (rec === null || rec === undefined) return null
+  const weaknessNodes = (rec.weaknessIds || []).map((id) => {
+    const w = store.getWeakness(id)
+    if (w === null || w === undefined) return null
+    return w.node + '[' + w.status + ']'
+  }).filter((x) => x !== null)
+  const c = rec.compact
+  return {
+    degraded: rec.degraded === true || c === null,
+    conclusion: c ? c.conclusion : '',
+    stuckReplay: c ? c.stuckReplay : '',
+    chain: c ? c.chain : [],
+    openBranches: c ? c.openBranches : [],
+    weaknessNodes,
+  }
 }
 
 export function switchConversation(id) {
@@ -326,7 +381,7 @@ export function sendUser(text, images) {
   const ctrl = new AbortController()
   conv.abort = ctrl
   emit()
-  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal, { subject: conv.subject }).then(
+  return runAssistant(conv.apiMessages, (ev) => onToolEvent(conv, ev), ctrl.signal, { subject: conv.subject, archive: archiveView(conv) }).then(
     (final) => {
       if (final) pushItemTo(conv, { kind: 'assistant', text: final })
       notify()

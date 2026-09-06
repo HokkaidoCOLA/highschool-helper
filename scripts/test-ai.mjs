@@ -61,7 +61,7 @@ ok('最终文本透传', final === '图与题都进库了，去复习页抽查�
 ok('事件流 4 条（两工具 run+done）', events.length === 4 && events[1].phase === 'done' && events[3].phase === 'done')
 ok('工具摘要中文化', events[0].label.includes('录入题库') && events[2].label.includes('动态演示'))
 ok('第二轮请求携带 tool 角色回灌', requests[1].messages.some((m) => m.role === 'tool'))
-ok('携带 OpenAI tools schema（M3 后 17 个）', Array.isArray(requests[0].tools) && requests[0].tools.length === 17 && requests[0].tools[0].function.name === 'tutor_dashboard')
+ok('携带 OpenAI tools schema（M4 后 18 个）', Array.isArray(requests[0].tools) && requests[0].tools.length === 18 && requests[0].tools[0].function.name === 'tutor_dashboard')
 const demoEvent = events.find((e) => e.phase === 'done' && e.meta && e.meta.kind === 'hst-demo')
 ok('visualize 的 presentationMeta 投影完整', Boolean(demoEvent) && demoEvent.ok && demoEvent.meta.scene && Array.isArray(demoEvent.meta.keySteps), demoEvent ? String(demoEvent.error || 'meta缺') : '无demo事件')
 const items = store.db().items
@@ -351,6 +351,44 @@ const tDone = store.getTask(cr.id)
 ok('finish：任务 done + 总结卡入排期（复习库）', finOK.ok === true && tDone.status === 'done' && tDone.cardIds.length === 1 && store.db().items.find((i) => i.id === tDone.cardIds[0]).srs.state === 'new')
 ok('定稿后不再计入 activeTaskNodes', JSON.stringify(store.activeTaskNodes() || []).includes('复合函数的求导法则') === false)
 srvM2.close()
+// ── M4 · 复活与森林：tutor_explore.resume + 第二代档案注入 + 翻案链 ──
+const exRec = store.explorationDb().explorations.find((e) => e.convId === kid.id && !e.degraded)
+ok('M1 产的四件套档案在（复活的前提）', Boolean(exRec) && exRec.compact.conclusion === ARCHIVE.conclusion)
+const teTool = createTools(store).find((d) => d.name === 'tutor_explore')
+const teexec = async (a) => JSON.parse(await teTool.execute(a))
+const teList = await teexec({ action: 'list' })
+ok('tutor_explore list：档案目录可读', teList.total >= 1 && teList.explorations.some((e) => e.id === exRec.id))
+const teResume = await teexec({ action: 'resume', id: exRec.id })
+ok('tutor_explore resume：四件套+弱点现状+「别复述」指令', teResume.ok === true && teResume.archive.conclusion === ARCHIVE.conclusion && teResume.instruction.includes('别复述'))
+const g2 = session.resumeFromExploration(kid.id, exRec.id)
+ok('第二代：gen=2 挂在第一代下 + fromExploration 指档案', g2.gen === 2 && g2.parentId === kid.id && g2.fromExploration === exRec.id && g2.kind === 'exploration')
+ok('第二代不重放 transcript（只一条承接 notice、上下文空）', g2.items.length === 1 && g2.items[0].kind === 'notice' && g2.apiMessages.length === 0)
+const seenM4 = []
+const srvM4 = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    seenM4.push(parsed)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '那就从那条没聊完的分支接。' } }] }))
+  })
+})
+await new Promise((r) => srvM4.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srvM4.address().port + '/v1', model: 'stub', apiKey: 'x' })
+session.switchConversation(g2.id)
+await session.sendUser('上次卡的地方我想再试试', [])
+const m4sys = seenM4[0].messages[0]
+ok('第二代 system 注入继承存档（结论/卡点/未探索分支都在）', m4sys.role === 'system' && m4sys.content.includes('【上一代探索档案') && m4sys.content.includes(ARCHIVE.conclusion) && m4sys.content.includes('隐函数求导没碰'))
+ok('档案注入不重放 transcript（请求里 user 消息仅本轮 1 条）', seenM4[0].messages.filter((m) => m.role === 'user').length === 1)
+const live = store.listWeaknesses({ status: 'remedying' }).weaknesses[0]
+const ov = await texec({ action: 'dismiss', id: live.id, note: '第二代抽查证明当时就会，上代记录系误报', overturn: true })
+ok('翻案链：dismiss{overturn:true} → invalid + overturned 计数', ov.status === 'invalid' && store.weaknessStats().overturned >= 1)
+await new Promise((r) => setTimeout(r, 700))
+await session.loadConversations()
+const g2r = session.getConversation(g2.id)
+ok('重启后树不塌：第二代字段三处同步在线', g2r.gen === 2 && g2r.parentId === kid.id && g2r.fromExploration === exRec.id)
+srvM4.close()
 
 bad.close()
 server.close()

@@ -93,13 +93,22 @@ for (const [label, node, needle] of checks) {
     ok(label, false, String(err && err.message ? err.message : err).slice(0, 120))
   }
 }
-// 冻结后：头部换成徽标，按钮消失（frozen 只读语义的渲染面）
+// 冻结后：头部换成徽标 + 「🌱 再开一轮」（frozen 只读语义的渲染面）
 session.freezeConversation(eConv.id, true)
 try {
   const hz = rs(<Chat goSettings={() => {}} />)
-  ok('聊天页·已冻结徽标', hz.includes('已冻结') && !hz.includes('这轮完了'))
+  ok('聊天页·已冻结徽标', hz.includes('已冻结') && !hz.includes('这轮完了') && hz.includes('再开一轮'))
 } catch (err) {
   ok('聊天页·已冻结徽标', false, String(err && err.message ? err.message : err).slice(0, 120))
+}
+// M4 森林：冻结的第一代下面挂一条第二代，抽屉要缩进带连线并给再开一轮
+session.resumeFromExploration(eConv.id, 'ep_demo')
+try {
+  const htree = rs(<ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} onResume={() => {}} />)
+  ok('会话抽屉·fan 树缩进 + 第二代', htree.includes('└') && htree.includes('第二代'))
+  ok('会话抽屉·🌱 再开一轮（冻结行）', htree.includes('再开一轮'))
+} catch (err) {
+  ok('会话抽屉·fan 树', false, String(err && err.message ? err.message : err).slice(0, 120))
 }
 console.log('')
 if (failures.length > 0) { console.error('UI 冒烟失败 ' + failures.length + ' 项'); process.exit(1) }

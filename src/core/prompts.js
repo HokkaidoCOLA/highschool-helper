@@ -173,15 +173,45 @@ export function taskLines(ctx) {
 }
 
 /**
+ * 上一代探索档案段（M4 复活 · D2① 继承存档）：ctx.archive 由 App 端备好——
+ * { conclusion, stuckReplay, chain[], openBranches[], degraded, weaknessNodes[] }。
+ * 注入 system 而非重放 transcript：第二代从四件套起聊（06 篇 §5 防「退化重开」）。
+ * @param {object} [ctx] { archive }。
+ * @returns {string[]} 0–1 条。
+ */
+export function archiveLines(ctx) {
+  const a = ctx && ctx.archive !== null && typeof ctx.archive === 'object' ? ctx.archive : null
+  if (a === null) return []
+  const head = '【上一代探索档案 · 本轮是第二代探索】继承存档如下——先从档案接上，不从头再讲一遍；'
+    + '原始对话不在上下文里，档案就是你要继承的全部（用户想回看原件可自行翻冻结的上一轮会话）。'
+  const out = [head]
+  if (a.degraded === true) {
+    out.push('上一轮未形成四件套（归档降级）：只能按新探索推进，开场先花一分钟问清上次聊到哪了。')
+  } else {
+    if (typeof a.conclusion === 'string' && a.conclusion !== '') out.push('上轮结论：' + a.conclusion)
+    if (typeof a.stuckReplay === 'string' && a.stuckReplay !== '') out.push('当年卡点：' + a.stuckReplay)
+    if (Array.isArray(a.chain) && a.chain.length > 0) out.push('推理链：' + a.chain.join(' → '))
+    if (Array.isArray(a.openBranches) && a.openBranches.length > 0) out.push('未探索分支（本轮优先候选）：' + a.openBranches.join('；'))
+  }
+  if (Array.isArray(a.weaknessNodes) && a.weaknessNodes.length > 0) {
+    out.push('上一轮登记的弱点：' + a.weaknessNodes.join('、')
+      + '。本轮若证明某条其实是误报（用户当时就会），用 tutor_weakness dismiss 带 overturn:true 与证据翻案——翻案也是采集。')
+  }
+  return [out.join('\n')]
+}
+
+/**
  * 组装 App 端整段 system prompt。
  * @param {string} subject 六科键或 auto。
- * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak, activeTask }——extra 为用户自定义提示词，永远追加在最后。
+ * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak, activeTask, archive }——extra 为用户自定义提示词，永远追加在最后。
  * @returns {string} 拼装结果。
  */
 export function buildSystemPrompt(subject, ctx) {
   const c = ctx || {}
   const parts = [BASE]
   parts.push(SUBJECT_PROMPTS[subject] !== undefined ? SUBJECT_PROMPTS[subject] : AUTO_HINT)
+  const archive = archiveLines(c)
+  if (archive.length > 0) parts.push(archive.join('\n'))
   const scene = contextLines(c)
   if (scene.length > 0) parts.push(scene.join('\n'))
   const task = taskLines(c)

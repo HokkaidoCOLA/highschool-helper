@@ -939,4 +939,7 @@ body::before, body::after { opacity: var(--gv-blob); }
 .gapRow .grow { flex: 1; min-width: 0; }
 .gapDone { opacity: .6; }
 .finishBtn { margin-top: 8px; }
+/* M4：fan 树连线前缀 */
+.treeLink { color: var(--fg2); opacity: .7; }
+
 

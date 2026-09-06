@@ -99,8 +99,8 @@ npm run ico       # 重新生成 electron/build/icon.ico（矢量配方与 PWA �
 - **API Key**：只存本机 localStorage，不进备份、不外传；
 - **模型名**：需支持 function calling；**拍照讲题需视觉能力**（gpt-4o、qwen-vl、glm-4v 一类）。
 
-「测试连接」一键自检。`src/core/tools.js` 承载 16 个工具协议（承自原插件并持续在本仓库
-演进，如弱点表 `tutor_weakness`），模型每调一次工具都**真实落在本机 Store**：录题排期、
+「测试连接」一键自检。`src/core/tools.js` 承载 18 个工具协议（承自原插件并持续在本仓库
+演进，如弱点表 `tutor_weakness`、任务环 `tutor_task`、探索档案 `tutor_explore`），模型每调一次工具都**真实落在本机 Store**：录题排期、
 翻卡评分、可视化讲题卡——原插件里工具宿主是 DSH，这里是 App 自己的 IndexedDB。
 
 APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；纯浏览器 PWA 模式直连
@@ -139,7 +139,8 @@ APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；�
 
 ```
 src/core/       核心逻辑（移植自已退役插件，只在本仓库维护；含 tools.js 15 个工具）+ idb.js / bytes.js
-src/ai/         llm.js —— OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止
+src/ai/         llm.js（OpenAI 兼容客户端：多轮工具循环、视觉消息、可中止）/ session.js
+                （多会话 + fork/冻结/复活的会话森林）/ explore.js + task.js（B 环归档、A 环定稿）
 src/engine/     演示引擎四件套（复制）+ boot.js（共享 Player 装载、键盘守卫、主题变量）
 src/ui/         九页：聊天 / 任务（A 环）/ 今日 / 复习 / 题库 / 演示 / 资料 / 统计 / 设置
 src/state.js    store 单例 + 数据变更总线
