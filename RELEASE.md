@@ -1,5 +1,38 @@
 # Release
 
+> 产物管理：所有发布件统一放仓库根目录 `release/`（gitignore，不入库）——每版四件
+> （apk release/debug + win setup/portable）+ 同目录 `SHA256SUMS.txt`（shasum -a 256 生成）。
+
+## v0.2.1（2026-09-06）· 词条级探索（Explore 式两段交互）
+
+### 新交互：探索的锚点从「整条消息」下沉到「不懂的那个词」
+- 题目/解答里长按（桌面拖动）选中 ≤40 字的词 → 浮出「🌱 探索“X”」→ **速查卡**：
+  旁路一次模型调用，≤80 字讲清这个词在当前语境里指什么（定义＋最小例子），不进会话不归档；
+  还是堵 → 卡上「🌱 深入探索」→ **词条锚定子会话**（标题=词条；system 约束：先问现有图景、
+  一轮一词、解释里冒新词提醒再划词——概念树随划词自然生长）
+- **划词即预录弱点**：node=词条、confidence 0.5（用户自认强于 AI 抽取），照旧必须过抽查闸门
+  才进补习队列；冻结四件套围绕锚定词产出，同词自动并档（修：auto 会话里学科空白的弱点
+  现在会被后续判出学科的信号认领回填，杜绝双账本）
+- 第二代「🌱 再开一轮」继承词条锚；不划词时整条消息 🌱 仍是兜底入口（老行为零回归）
+- 参考对象：Explore (ai.explore.poker, Dialogus AI) —— child/divergent/branching 三动作中
+  后两者由既有消息级分叉与复活覆盖，MindScape 知识地图页仍未做（fan 树为其雏形）
+
+### 工程
+- session.js exploreTerm 字段（创建/slim/load 三处同步）；forkConversation 可选锚点参数
+- prompts.js 新增 LOOKUP_PROMPT / termLines（单一来源纪律不破）
+- 测试 165 → 176 项（速查不占会话 / 并档单记录 / 重启字段 / 词条标题渲染面等 +11）
+- versionCode 4：同证书正式签名，覆盖升级不断档
+
+### 产物（release/）
+- `highschool-tutor-v0.2.1-release.apk`（3.0M，versionCode 4，证书与 v0.1.0 一致 → 覆盖升级不断档）/ `highschool-tutor-v0.2.1-debug.apk`（3.8M）
+- `highschool-tutor-v0.2.1-win-x64-setup.exe`（98M）/ `highschool-tutor-v0.2.1-win-x64-portable.exe`（97M）；未签名惯例不变：SmartScreen 选「仍要运行」
+- 发布前冒烟 `npm run smoke` 五断言全绿；`npm test` 三连 176 项全绿
+- SHA-256（完整清单见 `release/SHA256SUMS.txt`，含 v0.2.0 历史四件）：
+  - apk release `157fabfff58da4ea0b84c89f8a36db36f87da77d76242d6a54dcff73d7162b24`
+  - apk debug `3e6a45bffcee563eb442b2e630d7170bca6f15731cacee32452f9c62c6e03a90`
+  - win setup `9a6820cd0315712f569827716fe65051d9ccd3fed98768273923325931b6f1fa`
+  - win portable `6e266e916dafd083cc37df3ae318d9785e43eaa266be21b003d335689454f724`
+
 ## v0.2.0（2026-09-06）· 双环四库全量（M1–M4）
 
 ### B 环 · 探索环（对话即采集）

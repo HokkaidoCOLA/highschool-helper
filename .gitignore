@@ -28,3 +28,6 @@ SingletonSocket
 
 # visualize 工具的会话卡片产物，不是应用源码
 viz/
+
+# 发布产物统一目录（APK/EXE/校验和，本机管理用，不入库）
+release/
