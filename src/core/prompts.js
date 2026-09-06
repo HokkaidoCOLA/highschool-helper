@@ -138,9 +138,29 @@ export function contextLines(ctx) {
 }
 
 /**
+ * 补习焦点段（双环四库 M2 · D1 同源注入）：只列过了验证闸门的弱点（remedying）。
+ * 本文件保持零依赖——rows 由 App 端 store.remedyInjection 备好（node/subjectLabel/confidence）。
+ * @param {object} [ctx] { remedying: Array, pendingWeak: number }。
+ * @returns {string[]} 0–1 条，无数据时空数组（不污染 prompt）。
+ */
+export function remedyLines(ctx) {
+  const c = ctx || {}
+  const rows = Array.isArray(c.remedying) ? c.remedying.slice(0, 6) : []
+  if (rows.length === 0) return []
+  const head = '【补习焦点】以下弱点已通过抽查验证闸门（对话卡点与评分不足同一张表）：排计划、出题、讲题收尾时优先覆盖；'
+    + '用户对某条说「已掌握」时走 tutor_weakness remedy 定稿入复习库，说「不相关」时走 dismiss——流转用工具，不要自行删改记录。'
+  const body = rows.map((w) => '· ' + String(w.node || '') + (w.subjectLabel ? '（' + w.subjectLabel + '）' : '') + '，置信 ' + Math.round((Number(w.confidence) || 0) * 100) + '%')
+  const pending = Number(c.pendingWeak)
+  if (Number.isFinite(pending) && pending > 0) {
+    body.push('（另有 ' + pending + ' 个待验证信号未列入——要用作补习证据前，先按 tutor_weakness 的抽查流程验一验。）')
+  }
+  return [[head, ...body].join('\n')]
+}
+
+/**
  * 组装 App 端整段 system prompt。
  * @param {string} subject 六科键或 auto。
- * @param {object} [ctx] { grade, region, extra }——extra 为用户自定义提示词，永远追加在最后。
+ * @param {object} [ctx] { grade, region, extra, remedying, pendingWeak }——extra 为用户自定义提示词，永远追加在最后。
  * @returns {string} 拼装结果。
  */
 export function buildSystemPrompt(subject, ctx) {
@@ -149,6 +169,8 @@ export function buildSystemPrompt(subject, ctx) {
   parts.push(SUBJECT_PROMPTS[subject] !== undefined ? SUBJECT_PROMPTS[subject] : AUTO_HINT)
   const scene = contextLines(c)
   if (scene.length > 0) parts.push(scene.join('\n'))
+  const remedy = remedyLines(c)
+  if (remedy.length > 0) parts.push(remedy.join('\n'))
   if (typeof c.extra === 'string' && c.extra.trim() !== '') parts.push(c.extra.trim())
   return parts.join('\n\n')
 }

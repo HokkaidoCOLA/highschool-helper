@@ -61,7 +61,7 @@ ok('最终文本透传', final === '图与题都进库了，去复习页抽查�
 ok('事件流 4 条（两工具 run+done）', events.length === 4 && events[1].phase === 'done' && events[3].phase === 'done')
 ok('工具摘要中文化', events[0].label.includes('录入题库') && events[2].label.includes('动态演示'))
 ok('第二轮请求携带 tool 角色回灌', requests[1].messages.some((m) => m.role === 'tool'))
-ok('携带 OpenAI tools schema', Array.isArray(requests[0].tools) && requests[0].tools.length === 15 && requests[0].tools[0].function.name === 'tutor_dashboard')
+ok('携带 OpenAI tools schema（M2 后 16 个）', Array.isArray(requests[0].tools) && requests[0].tools.length === 16 && requests[0].tools[0].function.name === 'tutor_dashboard')
 const demoEvent = events.find((e) => e.phase === 'done' && e.meta && e.meta.kind === 'hst-demo')
 ok('visualize 的 presentationMeta 投影完整', Boolean(demoEvent) && demoEvent.ok && demoEvent.meta.scene && Array.isArray(demoEvent.meta.keySteps), demoEvent ? String(demoEvent.error || 'meta缺') : '无demo事件')
 const items = store.db().items
@@ -273,6 +273,47 @@ const lkid = session.forkConversation('cv_legacy', 42)
 ok('老消息无 apiLen：分叉只带转写不炸', lkid.items.length === 1 && lkid.apiMessages.length === 0)
 session.deleteConversation(lkid.id)
 srvM1.close()
+
+// ── M2 · 弱点表生效：抽查闭环 + 同源注入 + 补习定稿（工具层 E2E）──
+const { createTools } = await import('../src/core/tools.js')
+const twTool = createTools(store).find((d) => d.name === 'tutor_weakness')
+const texec = async (a) => JSON.parse(await twTool.execute(a))
+const wk = store.addWeakness({ subject: 'physics', node: '动量定理', quote: '冲量不会算', src: 'conv:m2', source: 'explore' })
+const openR = await texec({ action: 'verify', id: wk.id })
+ok('verify 开抽查 → verifying + 出「1 道诊断题」指令', openR.status === 'verifying' && openR.instruction.includes('1 道诊断题'))
+ok('跳档被状态机拒绝（verifying 不能 remedy 定稿）', (await texec({ action: 'remedy', id: wk.id, card: { question: 'x', answer: 'y' } })).ok === false)
+const conf = await texec({ action: 'verify', id: wk.id, verdict: 'confirmed', rationale: '冲量与动量变化没搭上', answer: 'F=ma' })
+ok('判 confirmed → remedying 进补习队列（overview 同源）', conf.status === 'remedying' && store.overview().remedyQueue.some((r) => r.id === wk.id))
+// 同源注入：下一轮 system 必须带出【补习焦点】与该节点
+const seenM2 = []
+const srvM2 = http.createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => { body += c })
+  req.on('end', () => {
+    const parsed = JSON.parse(body)
+    seenM2.push(String(parsed.messages[0].content))
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '好' } }] }))
+  })
+})
+await new Promise((r) => srvM2.listen(0, '127.0.0.1', r))
+llm.saveAiConfig({ baseUrl: 'http://127.0.0.1:' + srvM2.address().port + '/v1', model: 'stub', apiKey: 'x' })
+session.newConversation()
+await session.sendUser('今天学点什么', [])
+const sysLast = seenM2[seenM2.length - 1]
+ok('补习焦点注入 system（闸门后才同源，D1①）', sysLast.includes('【补习焦点】') && sysLast.includes('动量定理'))
+ok('待验证信号不直接注入只报个数（防污染）', sysLast.includes('待验证'))
+const finR = await texec({ action: 'remedy', id: wk.id, card: { question: '冲量怎么算、和动量什么关系', answer: 'I=Ft；动量定理 I=Δp（矢量式）', explanation: '先定过程再选方向' } })
+const cardItem = store.db().items.find((i) => i.seedKey === 'weakness:' + wk.id)
+ok('remedy 定稿 → mastered + 卡入排期（走现有 newSrs，不改调度常量）', finR.status === 'mastered' && Boolean(cardItem) && cardItem.kind === 'card' && cardItem.srs.state === 'new')
+ok('定稿后离开补习队列', !store.overview().remedyQueue.some((r) => r.id === wk.id))
+const wkB = store.addWeakness({ subject: 'math', node: '复数的模', quote: 'q' })
+await texec({ action: 'verify', id: wkB.id })
+await texec({ action: 'verify', id: wkB.id, verdict: 'confirmed', rationale: 'r' })
+const dismissedRec = store.setWeaknessStatus(wkB.id, 'invalid', { resolution: { kind: 'dismiss', verdict: 'irrelevant', note: '用户在补习队列点这不相关' } })
+const stM2 = store.weaknessStats()
+ok('H4 驳回可采（dismissed/invalidRate/dismissRate 都是数）', dismissedRec.status === 'invalid' && stM2.dismissed >= 1 && Number.isFinite(stM2.invalidRate) && Number.isFinite(stM2.dismissRate))
+srvM2.close()
 
 bad.close()
 server.close()

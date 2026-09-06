@@ -65,6 +65,28 @@ export default function Today({ goReview, goSettings }) {
         </div>
       </div>
 
+      {/* 补习队列（M2）：过了验证闸门（抽查 confirmed）的弱点，置信度降序。
+          「这不相关」= 用户驳回权（D4），resolution.kind=dismiss 喂 H4 数据。 */}
+      {(data.remedyQueue || []).length > 0 ? (
+        <div className="card">
+          <h3>补习队列</h3>
+          <p className="hint">已验证的弱点（对话卡点与评分不足同一张表）——去聊天让教练逐个讲透、定稿入复习库。</p>
+          {data.remedyQueue.map((w) => (
+            <div className="weakRow" key={w.id}>
+              <Chip subject={w.subject} />
+              <span className="weakTopic grow">{w.node}</span>
+              <span className="weakMeta">置信 {Math.round((w.confidence || 0) * 100)}%</span>
+              <button
+                type="button"
+                className="btn sm"
+                title="误报或与你无关——驳回后不再进补习计划（H4 驳回数据）"
+                onClick={() => { store.setWeaknessStatus(w.id, 'invalid', { resolution: { kind: 'dismiss', verdict: 'irrelevant', note: '用户在补习队列点「这不相关」驳回' } }); notify() }}
+              >这不相关</button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="card">
         <h3>快速记一笔</h3>
         <div className="row">

@@ -39,6 +39,11 @@ const { normalizeScene, sceneSummary, keySteps } = await import('../src/core/sce
 const s = normalizeScene(EXAMPLES.plot2d)
 store.saveDemo({ title: s.scene.title, kind: 'plot2d', subject: 'math', topic: s.scene.topic, summary: sceneSummary(s.scene), keySteps: keySteps(s.scene), scene: s.scene })
 
+// M2：来一条过了验证闸门的弱点，Today 补习队列必须有渲染面
+const wkSeed = store.addWeakness({ subject: 'math', node: '复合函数求导', quote: '卡壳' })
+store.setWeaknessStatus(wkSeed.id, 'verifying', {})
+store.setWeaknessStatus(wkSeed.id, 'remedying', { resolution: { kind: 'spotcheck', verdict: 'confirmed' } })
+
 // ── M1 探索态：造一个分叉出来的探索会话，让 Chat/ConvDrawer 吃到 kind/frozen 分支 ──
 const session = await import('../src/ai/session.js')
 await session.loadConversations()
@@ -65,6 +70,8 @@ const checks = [
   ['聊天页·🌱 分叉按钮', <Chat goSettings={() => {}} />, '🌱 探索'],
   ['聊天页·探索冻结入口', <Chat goSettings={() => {}} />, '这轮完了'],
   ['会话抽屉·↪ 前缀', <ConvDrawer open convs={session.getSession().convs} activeId={session.getSession().activeId} onNew={() => {}} onSwitch={() => {}} onRename={() => {}} onDelete={() => {}} />, '↪'],
+  ['今日页·补习队列', <Today goReview={() => {}} />, '补习队列'],
+  ['今日页·这不相关按钮', <Today goReview={() => {}} />, '这不相关'],
 ]
 for (const [label, node, needle] of checks) {
   try {

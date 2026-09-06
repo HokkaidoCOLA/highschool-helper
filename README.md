@@ -99,9 +99,9 @@ npm run ico       # 重新生成 electron/build/icon.ico（矢量配方与 PWA �
 - **API Key**：只存本机 localStorage，不进备份、不外传；
 - **模型名**：需支持 function calling；**拍照讲题需视觉能力**（gpt-4o、qwen-vl、glm-4v 一类）。
 
-「测试连接」一键自检。`src/core/tools.js` 承载 15 个工具协议（承自原插件，插件退役后
-只在本仓库维护），模型每调一次工具都**真实落在本机 Store**：录题排期、翻卡评分、
-可视化讲题卡——原插件里工具宿主是 DSH，这里是 App 自己的 IndexedDB。
+「测试连接」一键自检。`src/core/tools.js` 承载 16 个工具协议（承自原插件并持续在本仓库
+演进，如弱点表 `tutor_weakness`），模型每调一次工具都**真实落在本机 Store**：录题排期、
+翻卡评分、可视化讲题卡——原插件里工具宿主是 DSH，这里是 App 自己的 IndexedDB。
 
 APK 内请求经 CapacitorHttp 原生代理，不受 WebView 的 CORS 限制；纯浏览器 PWA 模式直连
 第三方端点可能被 CORS 拦（同源部署或装 APK 是正路）。拍照在 Android 上直接拉系统相机

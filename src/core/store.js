@@ -57,6 +57,19 @@ const WEAKNESS_CAP = 500
 /** 探索档案上限（PLAN 拍板 200；档案只存四件套与元数据，transcript 留在会话本体——D2②）。 */
 const EXPLORATION_CAP = 200
 
+/**
+ * 弱点状态机的合法迁移表（06 篇 §4）：discovered → verifying → remedying → mastered | invalid。
+ * verifying 可退回 discovered（抽查没聊完）；invalid 对第二代翻案与用户驳回都开放（D2/D4）。
+ * mastered/invalid 是终态——mastered 的排期交给 items+srs，invalid 不再并档也不再流转。
+ */
+const WEAKNESS_FLOW = {
+  discovered: ['verifying', 'invalid'],
+  verifying: ['remedying', 'invalid', 'discovered'],
+  remedying: ['mastered', 'invalid'],
+  mastered: [],
+  invalid: [],
+}
+
 /** 单条文本字段长度上限，防止把整篇文章塞进题库。 */
 const TEXT_CAP = 6000
 
@@ -875,7 +888,7 @@ export class Store {
     const src = text(input?.src, 120)
     const quote = text(input?.quote, 300)
     const db = this.weaknessDb()
-    const w = db.weaknesses.find((x) => x.status !== 'invalid'
+    const w = db.weaknesses.find((x) => x.status !== 'invalid' && x.status !== 'mastered'
       && (x.subject ?? '') === (subject ?? '') && x.node === node) ?? null
     if (w !== null) {
       if (!Array.isArray(w.sources)) w.sources = [w.source]
@@ -1023,6 +1036,91 @@ export class Store {
   getExploration(id) {
     return this.explorationDb().explorations.find((e) => e.id === id) ?? null
   }
+  /**
+   * 按 id 取一条弱点。
+   * @param {string} id 弱点 id。
+   * @returns {object|null} 记录。
+   */
+  getWeakness(id) {
+    return this.weaknessDb().weaknesses.find((w) => w.id === id) ?? null
+  }
+
+  /**
+   * 弱点状态流转（M2 验证闸门的执行底座；UI 驳回与 tutor_weakness 工具共用）。
+   * 只认 WEAKNESS_FLOW 白名单——非法迁移返回 null，由调用方提示合法去向。
+   * @param {string} id 弱点 id。
+   * @param {string} status 目标状态。
+   * @param {object} [opts] { resolution: {kind, verdict, note}, evidence: {src, quote}, itemId? }——
+   *   resolution.kind: spotcheck|dismiss|overturn（H1 驳回率/invalid 率的分类依据）。
+   * @param {number} [now] 当前时间戳。
+   * @returns {object|null} 流转后的记录；id 不存在或迁移非法时 null。
+   */
+  setWeaknessStatus(id, status, opts = {}, now = Date.now()) {
+    const db = this.weaknessDb()
+    const w = db.weaknesses.find((x) => x.id === id) ?? null
+    if (w === null) return null
+    if (!Array.isArray(WEAKNESS_FLOW[w.status]) || !WEAKNESS_FLOW[w.status].includes(status)) return null
+    w.status = status
+    w.updatedAt = now
+    const res = opts.resolution !== null && typeof opts.resolution === 'object' ? opts.resolution : null
+    if (res !== null) {
+      w.resolution = {
+        kind: text(res.kind, 20), verdict: text(res.verdict, 20),
+        note: text(res.note, 300), at: now,
+      }
+    }
+    const ev = opts.evidence !== null && typeof opts.evidence === 'object' ? opts.evidence : null
+    if (ev !== null && (text(ev.quote, 300) !== '' || text(ev.src, 120) !== '')) {
+      w.evidence.push({ src: text(ev.src, 120), quote: text(ev.quote, 300), ts: now })
+      if (w.evidence.length > 6) w.evidence = w.evidence.slice(-6)
+    }
+    if (status === 'mastered' && text(opts.itemId, 40) !== '') w.itemId = text(opts.itemId, 40)
+    this.write('weaknesses', db)
+    return w
+  }
+
+  /**
+   * 补习焦点池（D1①②同源注入 + D3 交集过滤）：只有过了验证闸门（remedying）的弱点
+   * 才配进 system/计划；有活跃任务节点集时只注入交集内的，其余留全局池不跟任务抢注意力。
+   * @param {string[]|null} taskNodes 活跃任务的节点集；null/空 = 无任务，走全局池。
+   * @param {number} [limit] 条数上限。
+   * @returns {object[]} 注入用弱点（置信度降序）。
+   */
+  remedyInjection(taskNodes, limit = 6) {
+    const rows = this.listWeaknesses({ status: 'remedying' }).weaknesses
+    const nodes = (Array.isArray(taskNodes) ? taskNodes : []).map((n) => text(n, 80)).filter((n) => n !== '')
+    const cap = Math.max(1, Math.trunc(limit) || 6)
+    if (nodes.length === 0) return rows.slice(0, cap)
+    const hit = (w) => nodes.some((n) => w.node === n || w.node.includes(n) || n.includes(w.node))
+    return rows.filter(hit).slice(0, cap)
+  }
+
+  /**
+   * 弱点表统计（06 篇 §6 的 H1/H4 采集口径）：
+   * invalidRate = 抽查判掉的假报告占比（H1 目标 <30%）；dismissRate = 进过补习队列后被
+   * 用户「这不相关」驳回的占比（H4 目标 <20%，驳回判定权在用户 D4）。
+   * @returns {object} 指标。
+   */
+  weaknessStats() {
+    const rows = this.weaknessDb().weaknesses
+    const byStatus = {}
+    for (const w of rows) byStatus[w.status] = (byStatus[w.status] ?? 0) + 1
+    const srcOf = (w) => (Array.isArray(w.sources) ? w.sources : [w.source])
+    const spotchecked = rows.filter((w) => w.resolution?.kind === 'spotcheck')
+    const dismissed = rows.filter((w) => w.resolution?.kind === 'dismiss')
+    const enteredRemedy = dismissed.length + (byStatus.remedying ?? 0) + (byStatus.mastered ?? 0)
+    return {
+      total: rows.length,
+      byStatus,
+      dualSource: rows.filter((w) => srcOf(w).length > 1).length,
+      spotchecked: spotchecked.length,
+      invalidRate: spotchecked.length > 0
+        ? Math.round((spotchecked.filter((w) => w.status === 'invalid').length / spotchecked.length) * 100)
+        : null,
+      dismissed: dismissed.length,
+      dismissRate: enteredRemedy > 0 ? Math.round((dismissed.length / enteredRemedy) * 100) : null,
+    }
+  }
 
   // ── 汇总视图 ──────────────────────────────────────────────────────────────
 
@@ -1133,6 +1231,9 @@ export class Store {
         streak: this.streak(now),
       },
       weakTopics: this.weakTopics(6, now),
+      // 补习队列（M2）：过了验证闸门的弱点，置信度降序；只给视图字段，证据留在表里
+      remedyQueue: this.remedyInjection(null, 8).map((w) => ({ id: w.id, subject: w.subject, node: w.node, confidence: w.confidence, sources: w.sources })),
+      weakStats: this.weaknessStats(),
       recentExams: exams.slice(-3),
     }
   }
@@ -1226,4 +1327,4 @@ export class Store {
   }
 }
 
-export { GRADE_LEVELS, dayKey, dayKeyToTs, isDue, mastery, normalizeSrs, overdueDays }
+export { GRADE_LEVELS, WEAKNESS_FLOW, dayKey, dayKeyToTs, isDue, mastery, normalizeSrs, overdueDays }

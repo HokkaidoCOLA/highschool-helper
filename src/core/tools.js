@@ -7,7 +7,7 @@
 // 本程序按“无任何担保”发布，详见随包的 LICENSE 全文。
 
 /**
- * dsh-highschool-tutor — 模型可调工具（14 个）。
+ * dsh-highschool-tutor — 模型可调工具（16 个；App 侧清单以本文件 return 数组为准）。
  *
  * 设计原则：让「对话」成为最省力的录入与复习入口。你在会话里讲完一道错题，
  * 模型直接 tutor_add_items 写进错题本；你说「抽查我物理」，模型 tutor_review_deck
@@ -27,6 +27,8 @@
  *   tutor_visualize     生成动态演示（声明式场景 + 解题步骤）
  *   tutor_scene_guide   取场景规范的字段说明与示例
  *   tutor_paper_import  导入电子试卷/课件（docx/pptx/文本），自动切题并回填答案
+ *   tutor_teaching_guide 取某科完整讲解规范（讲题顺序/必画图题型/登记要求）
+ *   tutor_weakness      弱点注册表（双环四库 M2）：抽查验证 → 补习定稿入复习库 → 驳回
  *
  * 所有工具的返回值都是一段 JSON 字符串（含 summary 字段便于模型一眼读懂），
  * 参数 JSON Schema 只用 harness 支持的子集（type/properties/required/items/
@@ -36,6 +38,7 @@
  */
 
 import { mastery, previewIntervals } from './srs.js'
+import { WEAKNESS_FLOW } from './store.js'
 import { parseImport } from './importer.js'
 import { seedItems } from './seed.js'
 import { SUBJECT_KEYS, subjectLabel, toSubject } from './subjects.js'
@@ -921,6 +924,112 @@ export function createTools(store) {
           subject: guide.subject,
           text: guide.text,
         }
+      },
+    }),
+
+    // ── 16. 弱点注册表（双环四库 M2：验证闸门 + 补习队列的模型侧执行器）──────
+    jsonTool({
+      name: 'tutor_weakness',
+      description: [
+        '弱点注册表——对话被动采集的卡点与评分列出的不足同一张表（两环唯一汇点）。action 四动作：',
+        '· list {status?, subject?, limit?}：读表。status 取 discovered/verifying/remedying/mastered/invalid。',
+        '· verify {id}：开抽查（discovered→verifying）。随后你只出 1 道最能区分「真会不会」的诊断题（只给题干，不附答案、不顺手讲解），等用户文字作答。',
+        '· verify {id, verdict, rationale, answer}：用户作答后判案。confirmed=答案暴露确实不会（进补习队列）；false_positive=用户其实掌握、当年是误报（判 invalid）。以答案质量为准，宁缺勿滥。',
+        '· remedy {id, card{question,answer,explanation?,subject?}}：补习到位且用户确认掌握后判 mastered，同时生成一张该节点的精要问答卡入复习库排期（seedKey 幂等，重复定稿不会录两遍）。',
+        '· dismiss {id, note?}：用户说这条不相关/记错了，判 invalid——驳回与翻案的判定权在用户，不要劝阻。',
+        '状态机只认合法迁移（discovered→verifying→remedying→mastered|invalid），被拒时按返回的 allowed 列表走下一步。',
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'verify', 'remedy', 'dismiss'], description: '四动作之一' },
+          id: { type: 'string', description: '弱点 id（wk_ 开头；list 之外必填）' },
+          status: { type: 'string', enum: ['discovered', 'verifying', 'remedying', 'mastered', 'invalid'], description: 'list 过滤：状态' },
+          subject: { type: 'string', enum: SUBJECT_ENUM, description: 'list 过滤：学科' },
+          limit: { type: 'integer', description: 'list 条数上限（默认 50）' },
+          verdict: { type: 'string', enum: ['confirmed', 'false_positive'], description: 'verify 判案结论' },
+          rationale: { type: 'string', description: '判案依据（引用用户答案里的关键证据，≤120 字）' },
+          answer: { type: 'string', description: '用户作答原文（判案时带上，留证据）' },
+          note: { type: 'string', description: 'dismiss 的用户理由' },
+          card: {
+            type: 'object',
+            description: 'remedy 必填的定稿卡：该节点讲成一张能独立复习的精要问答',
+            properties: {
+              question: { type: 'string', description: '卡片正面：一问' },
+              answer: { type: 'string', description: '卡片背面：核心答案' },
+              explanation: { type: 'string', description: '为什么/易错点' },
+              subject: { type: 'string', enum: SUBJECT_ENUM, description: '原弱点缺学科时在此补' },
+            },
+          },
+        },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const action = String(args.action || '')
+        if (action === 'list') {
+          const r = store.listWeaknesses({ status: args.status, subject: args.subject, limit: args.limit })
+          const brief = r.weaknesses.map((w) => ({ id: w.id, subject: w.subject, node: w.node, status: w.status, confidence: w.confidence, sources: w.sources, lastEvidence: w.evidence.slice(-2) }))
+          return {
+            summary: r.total > 0 ? '弱点 ' + r.total + ' 条：' + brief.map((w) => w.node + '[' + w.status + '/' + w.confidence + ']').join('；') : '弱点表为空（对话采集与评分不足都会落到这里）',
+            total: r.total,
+            weaknesses: brief,
+          }
+        }
+        const w = store.getWeakness(args.id)
+        if (w === null || w === undefined) return { ok: false, error: '找不到弱点 id=' + String(args.id) + '，先 action=list 查表' }
+        const allowed = WEAKNESS_FLOW[w.status] ?? []
+        const why = (act) => ({ ok: false, error: '状态 ' + w.status + ' 不能执行 ' + act + '（当前状态可流向：' + (allowed.length > 0 ? allowed.join('/') : '无，终态') + '）' })
+        if (action === 'verify') {
+          const verdict = String(args.verdict || '')
+          if (verdict === '') {
+            if (w.status !== 'discovered' && w.status !== 'verifying') return why('verify 开抽查')
+            if (w.status === 'discovered') store.setWeaknessStatus(w.id, 'verifying', { evidence: { src: 'gate', quote: '抽查开始' } })
+            return {
+              ok: true, id: w.id, node: w.node, subject: w.subject, status: 'verifying',
+              instruction: '对该节点只出 1 道诊断题（只题干、不附答案、不讲解），等用户文字作答；作答后按答案质量判案：不会→verdict=confirmed，真会→verdict=false_positive，然后带 rationale+answer 再调一次本动作。',
+            }
+          }
+          if (w.status !== 'verifying') return { ok: false, error: '判案必须发生在 verifying（先 verify 开抽查拿到题目时机）；当前 ' + w.status }
+          if (verdict !== 'confirmed' && verdict !== 'false_positive') return { ok: false, error: 'verdict 需 confirmed 或 false_positive' }
+          const to = verdict === 'confirmed' ? 'remedying' : 'invalid'
+          const upd = store.setWeaknessStatus(w.id, to, {
+            resolution: { kind: 'spotcheck', verdict, note: args.rationale },
+            evidence: { src: 'spotcheck', quote: ('答：' + String(args.answer || '') + '；判：' + String(args.rationale || '')).slice(0, 300) },
+          })
+          if (upd === null) return { ok: false, error: '流转被状态机拒绝' }
+          return { ok: true, id: upd.id, status: upd.status, summary: verdict === 'confirmed' ? '弱点确认，进入补习队列（用户在「今日」页可见）' : '误报判 invalid（抽查数据进 H1 统计）' }
+        }
+        if (action === 'remedy') {
+          if (w.status !== 'remedying') return why('remedy 定稿')
+          const card = args.card !== null && typeof args.card === 'object' ? args.card : {}
+          const question = String(card.question || '').trim()
+          const answer = String(card.answer || '').trim()
+          if (question === '' || answer === '') return { ok: false, error: 'remedy 需要 card{question,answer}：把这个节点讲成一张精要问答卡，它要进复习库长期排期' }
+          const subject = w.subject !== null ? w.subject : (SUBJECT_ENUM.includes(String(card.subject)) ? String(card.subject) : null)
+          if (subject === null) return { ok: false, error: '该弱点没有学科，card.subject 补一个六科键再定稿' }
+          const r = store.upsertItems([{
+            subject, kind: 'card', topic: w.node, question, answer,
+            explanation: String(card.explanation || ''), tags: ['弱点补习'], source: 'weakness:' + w.id, seedKey: 'weakness:' + w.id,
+          }])
+          const itemId = r.added[0] ?? r.updated[0] ?? ''
+          // 不覆写 resolution：闸门判定（confirmed）是 H1 口径的原始账，mastered 由状态本身表达
+          const upd = store.setWeaknessStatus(w.id, 'mastered', {
+            itemId,
+            evidence: { src: 'item:' + itemId, quote: '补习完成，定稿卡入复习库' },
+          })
+          return { ok: true, id: w.id, status: 'mastered', itemId, summary: '已判 mastered：卡片 ' + itemId + ' 进入艾宾浩斯排期——这就是笔记里「总结进复习库」' }
+        }
+        if (action === 'dismiss') {
+          if (w.status === 'mastered' || w.status === 'invalid') return why('dismiss')
+          const upd = store.setWeaknessStatus(w.id, 'invalid', {
+            resolution: { kind: 'dismiss', verdict: 'irrelevant', note: args.note },
+            evidence: { src: 'dismiss', quote: String(args.note || '用户驳回：这不相关') },
+          })
+          if (upd === null) return { ok: false, error: '流转被状态机拒绝' }
+          return { ok: true, id: upd.id, status: 'invalid', summary: '已按用户意见判 invalid（H4 驳回数据已采）' }
+        }
+        return { ok: false, error: 'action 需 list/verify/remedy/dismiss 之一' }
       },
     }),
   ]
